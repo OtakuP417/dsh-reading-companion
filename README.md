@@ -15,10 +15,13 @@
 ## 安装
 
 ```bash
-dsh plugin --profile desktop add "D:\AiReading\plugin"
+# 从 GitHub 安装（本仓库即可安装，lib/ 里是预构建产物，不需要本地构建）
+dsh plugin --profile desktop add "github:OtakuP417/dsh-reading-companion"
 ```
 
 装完后刷新 GUI：左侧边栏会多出一个书本图标，点开就是「伴读」整页（不再占用会话里的页签）。数据落在 `$DSH_HOME/reading-companion/`（默认 `C:\Users\<你>\.dsh\reading-companion\`）。
+
+改过源码之后重装：Host 侧是 ESM、不做热替换，`plugin remove` + `plugin add` 在同一进程里仍可能拿到旧模块，**换新进程**（重启应用）最稳。
 
 ## 目录
 
