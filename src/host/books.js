@@ -12,10 +12,98 @@ import fsp from 'node:fs/promises'
 import path from 'node:path'
 import { Store, appendLine, bookIdFor, readJson, readLines, writeJson } from './store.js'
 import { parseEpub } from './epub.js'
+import { buildChapters } from './chapters.js'
 import { normalizeToEpub } from './formats/index.js'
 import { HybridIndex, chunkSection } from '../shared/retrieval.js'
 import { buildCfi } from '../shared/cfi.js'
 import { takeawayId } from '../shared/cards.js'
+import { isCfi, spineIndexOf } from '../shared/cfi.js'
+
+/**
+ * Chapter records as they are stored: the table-of-contents entry, its text,
+ * and the spine document it came from. The document index is what keeps a
+ * chapter addressable — foliate navigates by spine, and every CFI we receive
+ * resolves to a document first.
+ * @param {any[]} chapters
+ */
+function chapterRecords(chapters) {
+  return chapters.map((chapter) => ({
+    index: chapter.index,
+    title: chapter.title,
+    href: chapter.href ?? null,
+    docIndex: chapter.docIndex,
+    startChar: chapter.startChar ?? 0,
+    chars: chapter.chars,
+    text: chapter.text,
+  }))
+}
+
+/** Chapters that live in one spine document, in reading order. */
+export function chaptersInDoc(sections, docIndex) {
+  return (sections ?? []).filter((section) => section.docIndex === docIndex)
+}
+
+/** Compare hrefs the way the EPUB generator wrote them: decoded, no "./". */
+function normalizeHref(href) {
+  if (typeof href !== 'string' || href.length === 0) return null
+  let out = href
+  try {
+    out = decodeURIComponent(href)
+  } catch {
+    out = href
+  }
+  out = out.replace(/^\.\//, '').replace(/^\//, '')
+  return out.length > 0 ? out : null
+}
+
+/**
+ * Which chapter the reader is in, from what foliate can tell us: the current
+ * table-of-contents entry's href, and the spine document the position is in.
+ *
+ * A book whose anchors resolve gives an exact href match. A converted book
+ * whose anchors are broken cannot: foliate then reports the last entry it knows
+ * of inside the document, so we take the last chapter of that document too —
+ * the same belief, expressed in our numbers.
+ *
+ * @param {any[]} sections
+ * @param {string | null | undefined} href
+ * @param {number | null | undefined} spineIndex
+ * @returns {number | null}
+ */
+export function resolveChapterFromHref(sections, href, spineIndex) {
+  const wanted = normalizeHref(href)
+  if (wanted) {
+    const exact = sections.find((section) => normalizeHref(section.href) === wanted)
+    if (exact) return exact.index
+    const docPart = wanted.split('#')[0]
+    const sameDoc = sections.filter((section) => normalizeHref(section.href)?.split('#')[0] === docPart)
+    if (sameDoc.length > 0) return sameDoc[sameDoc.length - 1].index
+  }
+  if (typeof spineIndex === 'number' && Number.isInteger(spineIndex)) {
+    const inside = chaptersInDoc(sections, spineIndex)
+    if (inside.length > 0) return inside[inside.length - 1].index
+  }
+  return null
+}
+
+/**
+ * Which chapter a tool call or a highlight is about. A chapter number is taken
+ * at its word (the client knows it exactly); a bare CFI resolves through its
+ * spine document to the LAST chapter in it, which is the least privileged
+ * answer — guessing the first one would let a stale anchor quietly unlock text
+ * the reader has not reached.
+ * @param {any[]} sections
+ * @param {{ chapterIndex?: unknown, sectionIndex?: unknown, cfi?: unknown }} target
+ * @returns {number | null}
+ */
+export function resolveChapterIndex(sections, target) {
+  const claimed = typeof target?.chapterIndex === 'number' ? target.chapterIndex : typeof target?.sectionIndex === 'number' ? target.sectionIndex : null
+  if (claimed !== null) return claimed
+  if (!isCfi(target?.cfi)) return null
+  const inside = chaptersInDoc(sections, spineIndexOf(target.cfi))
+  if (inside.length === 0) return null
+  return inside[inside.length - 1].index
+}
 
 export class Library {
   /** @param {Store} [store] */
@@ -27,6 +115,8 @@ export class Library {
     this.chunkCache = new Map()
     /** @type {Map<string, import('../shared/retrieval.js').HybridIndex>} */
     this.indexCache = new Map()
+    /** Books already examined for the chapter split, once per process. */
+    this.upgraded = new Set()
   }
 
   async ensureLayout() {
@@ -93,14 +183,11 @@ export class Library {
     await fsp.mkdir(dir, { recursive: true })
 
     await fsp.writeFile(this.store.bookPath(id, 'source.epub'), bytes)
-    const sections = parsed.sections.map((section) => ({
-      index: section.index,
-      href: section.href,
-      path: section.path,
-      title: section.title,
-      chars: section.chars,
-      text: section.text,
-    }))
+    // A chapter is a table-of-contents entry, not a spine file: one file here
+    // holds seven chapters, and progress measured in files would unlock all of
+    // them at once.
+    const split = buildChapters(parsed)
+    const sections = chapterRecords(split.chapters)
     await writeJson(this.store.bookPath(id, 'sections.json'), sections)
 
     const meta = {
@@ -109,9 +196,12 @@ export class Library {
       author: parsed.author,
       language: parsed.language,
       chapterCount: sections.length,
+      docCount: parsed.sections.length,
       toc: parsed.toc ?? [],
       tocVersion: 2,
-      sections: sections.map(({ index, href, title, chars }) => ({ index, href, title, chars })),
+      chaptersVersion: 2,
+      splitStats: split.stats,
+      sections: sections.map(({ index, href, title, chars, docIndex }) => ({ index, href, title, chars, docIndex })),
       fileName: options.fileName ?? null,
       importedAt: new Date().toISOString(),
     }
@@ -138,7 +228,11 @@ export class Library {
           sectionIndex: section.index,
           start: piece.start,
           end: piece.end,
-          cfi: buildCfi(section.index),
+          // A chapter is not a spine document, so the anchor points at the
+          // document that holds it; jumping there lands on that chapter's page
+          // because the reader restores the closest position it can express.
+          cfi: buildCfi(section.docIndex ?? section.index),
+          docIndex: section.docIndex ?? section.index,
           text: piece.text,
         })
       }
@@ -153,9 +247,74 @@ export class Library {
   async sections(bookId) {
     const cached = this.sectionCache.get(bookId)
     if (cached) return cached
+    if (!this.upgraded.has(bookId)) {
+      this.upgraded.add(bookId)
+      await this.ensureChapters(bookId)
+    }
     const sections = await readJson(this.store.bookPath(bookId, 'sections.json'), [])
     this.sectionCache.set(bookId, sections)
     return sections
+  }
+
+  /**
+   * Re-cut a library that was imported when a chapter meant a spine document.
+   * The split runs from the stored EPUB, so nothing has to be re-imported; the
+   * reading position is lifted to the END of the document it used to point at,
+   * which can only widen what the reader has already read, never narrow it.
+   */
+  async ensureChapters(bookId) {
+    const meta = await readJson(this.store.bookPath(bookId, 'meta.json'), null)
+    if (!meta) return null
+    if ((meta.chaptersVersion ?? 1) >= 2) return meta
+    let split
+    try {
+      const bytes = await this.sourceBytes(bookId)
+      if (!bytes) return meta
+      split = buildChapters(parseEpub(bytes))
+    } catch {
+      return meta
+    }
+    const sections = chapterRecords(split.chapters)
+    if (sections.length === 0) return meta
+    await writeJson(this.store.bookPath(bookId, 'sections.json'), sections)
+    const next = {
+      ...meta,
+      chapterCount: sections.length,
+      docCount: meta.docCount ?? split.stats.docs,
+      chaptersVersion: 2,
+      splitStats: split.stats,
+      sections: sections.map(({ index, href, title, chars, docIndex }) => ({ index, href, title, chars, docIndex })),
+    }
+    await writeJson(this.store.bookPath(bookId, 'meta.json'), next)
+    this.sectionCache.set(bookId, sections)
+    this.chunkCache.delete(bookId)
+    this.indexCache.delete(bookId)
+    await this.buildChunks(bookId, sections)
+    await this.migrateProgress(bookId, sections)
+    return next
+  }
+
+  /** Move a document-level progress record onto chapter numbers. */
+  async migrateProgress(bookId, sections) {
+    const old = await readJson(this.store.progressPath(bookId), null)
+    if (!old || (old.chaptersVersion ?? 1) >= 2) return old
+    const ceilingInDoc = chaptersInDoc(sections, old.sectionIndex)
+    const positionInDoc = chaptersInDoc(sections, old.positionSectionIndex ?? old.sectionIndex)
+    const ceiling = ceilingInDoc.length > 0 ? ceilingInDoc[ceilingInDoc.length - 1].index : Math.min(old.sectionIndex ?? 0, sections.length - 1)
+    const position = positionInDoc.length > 0 ? positionInDoc[0].index : 0
+    const next = {
+      ...old,
+      sectionIndex: ceiling,
+      positionSectionIndex: position,
+      chapterTitle: sections[position]?.title ?? old.chapterTitle ?? null,
+      ceilingTitle: sections[ceiling]?.title ?? old.ceilingTitle ?? null,
+      sectionCount: sections.length,
+      chaptersVersion: 2,
+      updatedAt: old.updatedAt ?? new Date().toISOString(),
+      migratedAt: new Date().toISOString(),
+    }
+    await writeJson(this.store.progressPath(bookId), next)
+    return next
   }
 
   /** @param {string} bookId @returns {Promise<any[]>} */

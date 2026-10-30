@@ -64,7 +64,15 @@ export function apply(ctx, config = {}) {
   const tools = registerTools({ ctx, library, cache, summaries, config, state })
 
   // 2. and the synchronous guard runs before any of them can start
-  const guardDisposer = installGuard({ ctx, state, config, progressSync, bookIds: () => store.syncBookIds() })
+  const guardDisposer = installGuard({
+    ctx,
+    state,
+    config,
+    progressSync,
+    // Read straight off disk: a guard runs synchronously, before any await.
+    sectionsSync: (bookId) => readJsonSync(store.bookPath(bookId, 'sections.json'), []),
+    bookIds: () => store.syncBookIds(),
+  })
 
   // 4. the co-reader stance, with this book's boundary appended per turn
   ctx.inject(['systemPrompt'], (prompted) => {

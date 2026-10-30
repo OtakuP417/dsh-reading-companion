@@ -52,7 +52,10 @@ export class Reader {
       const detail = event.detail
       options.onRelocate?.({
         cfi: detail.cfi,
-        sectionIndex: typeof detail.section?.current === 'number' ? detail.section.current : null,
+        // The spine document, not the chapter: only the host knows how the
+        // table of contents cuts documents into chapters.
+        spineIndex: typeof detail.section?.current === 'number' ? detail.section.current : null,
+        href: detail.tocItem?.href ?? null,
         fraction: detail.fraction ?? null,
         label: detail.tocItem?.label ?? null,
       })
@@ -105,7 +108,7 @@ export class Reader {
       } catch {
         cfi = null
       }
-      onSelection({ cfi, sectionIndex: index, quote: quote.slice(0, 1200), rect: range.getBoundingClientRect?.() ?? null })
+      onSelection({ cfi, spineIndex: index, quote: quote.slice(0, 1200), rect: range.getBoundingClientRect?.() ?? null })
     }
     doc.addEventListener('mouseup', () => window.setTimeout(report, 0))
     doc.addEventListener('touchend', () => window.setTimeout(report, 0))

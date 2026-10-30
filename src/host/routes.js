@@ -13,6 +13,7 @@ import { describeDue, replay } from '../shared/scheduler.js'
 import { deriveCards } from '../shared/cards.js'
 import { clip } from '../shared/retrieval.js'
 import { buildCfi, isCfi, spineIndexOf } from '../shared/cfi.js'
+import { chaptersInDoc, resolveChapterFromHref, resolveChapterIndex } from './books.js'
 import { progressLine, retrievalText, retrieveRead, selectionWindow, summaryIndexText } from './context.js'
 import { singleTurnSystem, closingSystem } from './guidance.js'
 import { resolvedReadthrough } from './progress-view.js'
@@ -149,7 +150,18 @@ export function registerRoutes(deps) {
             author: meta.author ?? '',
             language: meta.language ?? '',
             chapterCount: meta.chapterCount ?? null,
-            toc: Array.isArray(meta.toc) ? meta.toc : [],
+            docCount: meta.docCount ?? null,
+            // Every table-of-contents row carries the chapter it opens, so the
+            // panel can mark unread entries and jump to the right place.
+            toc: Array.isArray(meta.toc)
+              ? meta.toc.map((entry) => ({
+                  index: entry.index,
+                  title: entry.title,
+                  href: entry.href ?? null,
+                  sectionIndex: entry.sectionIndex ?? null,
+                  chapterIndex: resolveChapterFromHref(meta.sections ?? [], entry.href, entry.sectionIndex),
+                }))
+              : [],
             format: meta.format ?? 'epub',
             textless: meta.textless === true,
             warnings: meta.warnings ?? [],
@@ -240,9 +252,19 @@ export function registerRoutes(deps) {
         const bookId = String(body?.bookId ?? state.activeBookId ?? '')
         if (!bookId) return sendJson(res, 400, { ok: false, error: '还没有打开任何书' })
         if (!isCfi(body?.cfi) && typeof body?.cfi !== 'string') return sendJson(res, 400, { ok: false, error: '缺少有效的 CFI' })
+        const progressSections = await library.sections(bookId)
+        // The client reports the anchor it is looking at; `positionSectionIndex`
+        // is what older builds sent and is still honoured as a chapter number.
+        const byAnchor = resolveChapterFromHref(progressSections, body.href, body.spineIndex)
+        const reportedChapter =
+          typeof body.chapterIndex === 'number'
+            ? body.chapterIndex
+            : typeof body.sectionIndex === 'number'
+              ? body.sectionIndex
+              : byAnchor ?? (typeof body.positionSectionIndex === 'number' ? body.positionSectionIndex : null)
         const saved = await library.saveProgress(bookId, {
           cfi: String(body.cfi),
-          positionSectionIndex: typeof body.positionSectionIndex === 'number' ? body.positionSectionIndex : undefined,
+          positionSectionIndex: reportedChapter ?? undefined,
           chapterTitle: typeof body.chapterTitle === 'string' ? body.chapterTitle : undefined,
           sectionCount: typeof body.sectionCount === 'number' ? body.sectionCount : undefined,
         })
@@ -256,12 +278,21 @@ export function registerRoutes(deps) {
         const body = JSON.parse((await readBody(req)).toString('utf8') || '{}')
         const bookId = String(body?.bookId ?? state.activeBookId ?? '')
         const progress = await library.progress(bookId)
-        const gate = requireReadable({ cfi: body?.cfi ?? null, sectionIndex: typeof body?.sectionIndex === 'number' ? body.sectionIndex : null }, progress, {
+        // A selection carries a chapter number from the reader (it knows the
+        // table-of-contents entry exactly) and a CFI for the text itself.
+        const sections = await library.sections(bookId)
+        const chapter =
+          resolveChapterFromHref(sections, body?.href, body?.spineIndex) ??
+          resolveChapterIndex(sections, {
+            cfi: body?.cfi ?? null,
+            sectionIndex: typeof body?.chapterIndex === 'number' ? body.chapterIndex : null,
+          })
+        const gate = requireReadable({ sectionIndex: chapter }, progress, {
           what: '记录选中段落',
         })
         state.lastSelection = {
           cfi: typeof body?.cfi === 'string' ? body.cfi : null,
-          sectionIndex: typeof body?.sectionIndex === 'number' ? body.sectionIndex : null,
+          sectionIndex: chapter,
           quote: typeof body?.quote === 'string' ? body.quote.slice(0, 2000) : null,
           at: new Date().toISOString(),
         }
@@ -273,12 +304,19 @@ export function registerRoutes(deps) {
         const body = JSON.parse((await readBody(req)).toString('utf8') || '{}')
         const bookId = String(body?.bookId ?? state.activeBookId ?? '')
         const progress = await library.progress(bookId)
-        requireReadable({ cfi: body?.cfi ?? null, sectionIndex: typeof body?.sectionIndex === 'number' ? body.sectionIndex : null }, progress, {
+        const noteSections = await library.sections(bookId)
+        const noteChapter =
+          resolveChapterFromHref(noteSections, body?.href, body?.spineIndex) ??
+          resolveChapterIndex(noteSections, {
+            cfi: body?.cfi ?? null,
+            sectionIndex: typeof body?.chapterIndex === 'number' ? body.chapterIndex : null,
+          })
+        requireReadable({ sectionIndex: noteChapter }, progress, {
           what: '存下划线',
         })
         const note = await library.addNote(bookId, {
           cfi: typeof body?.cfi === 'string' ? body.cfi : null,
-          sectionIndex: typeof body?.sectionIndex === 'number' ? body.sectionIndex : 0,
+          sectionIndex: noteChapter ?? 0,
           quote: typeof body?.quote === 'string' ? body.quote : '',
           comment: typeof body?.comment === 'string' ? body.comment : '',
         })
@@ -300,27 +338,33 @@ export function registerRoutes(deps) {
         const question = String(body?.question ?? '').slice(0, 4000)
         const selection = {
           cfi: typeof body?.cfi === 'string' ? body.cfi : null,
-          sectionIndex: typeof body?.sectionIndex === 'number' ? body.sectionIndex : null,
           quote: typeof body?.quote === 'string' ? body.quote : null,
         }
+        const askSections = await library.sections(bookId)
+        const askedChapter =
+          typeof body?.chapterIndex === 'number'
+            ? body.chapterIndex
+            : typeof body?.sectionIndex === 'number'
+              ? body.sectionIndex // an explicit chapter number, as the tools take it
+              : resolveChapterFromHref(askSections, body?.href, body?.spineIndex)
         // No selection (just "ask about where I am") is a normal case: the UI says
         // 不划线也可以问已读过的内容. Center the window on the reader's current chapter
         // instead of on nothing — an empty target would fail closed and look like a bug.
-        const anchored = Boolean(selection.cfi) || typeof selection.sectionIndex === 'number'
-        const target = anchored
-          ? { cfi: selection.cfi, sectionIndex: selection.sectionIndex }
-          : { cfi: null, sectionIndex: progress?.positionSectionIndex ?? 0 }
+        const anchored = Boolean(selection.cfi) || askedChapter !== null
+        const askChapter = anchored
+          ? (askedChapter ?? resolveChapterIndex(askSections, { cfi: selection.cfi }))
+          : (progress?.positionSectionIndex ?? 0)
         // Hard gate BEFORE any text is assembled: an unread anchor is refused here.
         // It runs before the model-route check on purpose — the refusal must not
         // depend on whether a model happens to be available.
-        requireReadable(target, progress, { what: '就这段原文讨论' })
+        requireReadable({ sectionIndex: askChapter }, progress, { what: '就这段原文讨论' })
 
         const route = resolveRoute(ctx, config, null)
         if (!route) return sendJson(res, 503, { ok: false, error: '这个会话没有可用的模型路由，暂时无法对话。复习和笔记不受影响。' })
 
         const window = await selectionWindow(library, bookId, progress, {
           cfi: anchored ? selection.cfi : null,
-          sectionIndex: target.sectionIndex,
+          sectionIndex: askChapter,
           quote: anchored ? selection.quote : null,
           before: config.windowChars ?? 300,
           after: config.windowChars ?? 300,
@@ -401,19 +445,28 @@ export function registerRoutes(deps) {
         const body = JSON.parse((await readBody(req)).toString('utf8') || '{}')
         const bookId = String(body?.bookId ?? state.activeBookId ?? '')
         const progress = await library.progress(bookId)
-        // The anchor decides the chapter: the CFI is the coordinate, and a
-        // chapter number that disagrees with it is a bug on the caller's side,
-        // not something to average out. Gate on the CFI when there is one.
-        const fromCfi = isCfi(body?.cfi) ? spineIndexOf(body.cfi) : null
+        // The anchor must agree with the chapter number, but they are no longer
+        // the same number: a CFI lands in a spine document, which now holds
+        // several chapters. They agree when the document contains the chapter.
+        const takeawaySections = await library.sections(bookId)
         const claimed = typeof body?.chapterIndex === 'number' ? body.chapterIndex : typeof body?.sectionIndex === 'number' ? body.sectionIndex : null
-        if (fromCfi !== null && claimed !== null && fromCfi !== claimed) {
-          return sendJson(res, 400, { ok: false, error: `锚点和章节号对不上：CFI 指向第 ${fromCfi + 1} 章，参数写的是第 ${claimed + 1} 章。` })
+        const fromCfiDoc = isCfi(body?.cfi) ? spineIndexOf(body.cfi) : null
+        if (fromCfiDoc !== null && claimed !== null) {
+          const inside = chaptersInDoc(takeawaySections, fromCfiDoc)
+          if (inside.length > 0 && !inside.some((item) => item.index === claimed)) {
+            return sendJson(res, 400, {
+              ok: false,
+              error: `锚点和章节号对不上：这个 CFI 落在第 ${inside[0].index + 1}–${inside[inside.length - 1].index + 1} 章所在的正文段里，参数写的是第 ${claimed + 1} 章。`,
+            })
+          }
         }
-        const sectionIndex = fromCfi ?? claimed ?? (progress?.positionSectionIndex ?? 0)
-        requireReadable({ cfi: isCfi(body?.cfi) ? body.cfi : null, sectionIndex }, progress, { what: '记录收获' })
+        const sectionIndex =
+          claimed ?? resolveChapterIndex(takeawaySections, { cfi: body?.cfi ?? null }) ?? (progress?.positionSectionIndex ?? 0)
+        requireReadable({ sectionIndex }, progress, { what: '记录收获' })
+        const takeawayChapter = takeawaySections.find((item) => item.index === sectionIndex)
         const record = await library.addTakeaway(bookId, {
           type: String(body?.type ?? '理解'),
-          cfi: isCfi(body?.cfi) ? body.cfi : buildCfi(sectionIndex),
+          cfi: isCfi(body?.cfi) ? body.cfi : buildCfi(takeawayChapter?.docIndex ?? 0),
           chapterIndex: sectionIndex,
           userQuote: typeof body?.userQuote === 'string' && body.userQuote.length > 0 ? body.userQuote.slice(0, 1000) : null,
           aiSummary: String(body?.aiSummary ?? '').slice(0, 1000),

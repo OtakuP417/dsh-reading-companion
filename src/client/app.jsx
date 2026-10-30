@@ -40,17 +40,12 @@ function ProgressLine({ view, tocCount = 0 }) {
   // A converted book often packs a dozen chapters into one spine file. Saying
   // "共 5 章" for a book whose own table of contents lists 40 entries reads as
   // "the import lost half the book", so the two counts are named separately.
-  const split = tocCount > 0 && tocCount !== view.chapterCount
   return (
     <span className="drc-progress">
       <span>已读到第 {view.ceiling + 1} 章</span>
       {view.ceilingTitle ? <span className="drc-dim">「{view.ceilingTitle}」</span> : null}
       {view.atCeiling ? null : <span className="drc-dim">· 现在在第 {view.position + 1} 章</span>}
-      {split ? (
-        <span className="drc-dim">（正文 {view.chapterCount} 段 · 目录 {tocCount} 条）</span>
-      ) : (
-        <span className="drc-dim">（共 {view.chapterCount} 章）</span>
-      )}
+      <span className="drc-dim">（共 {view.chapterCount} 章）</span>
     </span>
   )
 }
@@ -117,8 +112,8 @@ export default function App() {
                 .saveProgress({
                   bookId,
                   cfi: detail.cfi,
-                  positionSectionIndex: detail.sectionIndex ?? undefined,
-                  chapterTitle: detail.label ?? undefined,
+                  spineIndex: detail.spineIndex ?? undefined,
+                  href: detail.href ?? undefined,
                 })
                 .then((result) => {
                   setSnapshot((prev) => (prev ? { ...prev, progress: { ...prev.progress, ...result.progress } } : prev))
@@ -221,7 +216,7 @@ export default function App() {
         bookId: activeBookId,
         question,
         cfi: selection?.cfi ?? null,
-        sectionIndex: selection?.sectionIndex ?? null,
+        spineIndex: selection?.spineIndex ?? null,
         quote: selection?.quote ?? null,
       })
       setAskedWithoutWindow(!result.usedWindow && Boolean(selection))
@@ -244,7 +239,7 @@ export default function App() {
         aiSummary: message.text.slice(0, 900),
         userQuote: selection?.quote ?? null,
         cfi: selection?.cfi ?? null,
-        chapterIndex: selection?.sectionIndex ?? progressView?.position ?? 0,
+        chapterIndex: progressView?.position ?? 0,
       })
       await refresh()
     } catch (e) {
@@ -418,7 +413,9 @@ export default function App() {
               </div>
               <div className="drc-toc-list">
                 {toc.map((item) => {
-                  const unread = (progressView?.ceiling ?? -1) < item.sectionIndex
+                  // Entries without a chapter of their own (part dividers) are
+                  // shown as read: they open nothing.
+                  const unread = typeof item.chapterIndex === 'number' && (progressView?.ceiling ?? -1) < item.chapterIndex
                   return (
                     <button
                       key={item.index}
@@ -469,7 +466,7 @@ export default function App() {
                   <>
                     <p className="drc-quote">「{selection.quote.slice(0, 200)}」</p>
                     <div className="drc-row">
-                      <span className="drc-dim">第 {(selection.sectionIndex ?? 0) + 1} 章 · 只讨论这段</span>
+                      <span className="drc-dim">第 {(progressView?.position ?? 0) + 1} 章 · 只讨论这段</span>
                       <button type="button" className="drc-link" onClick={() => setSelection(null)}>
                         取消选择
                       </button>

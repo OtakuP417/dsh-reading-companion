@@ -11,7 +11,19 @@ import assert from 'node:assert/strict'
 import { registerRoutes } from '../src/host/routes.js'
 import { registerTools } from '../src/host/tools.js'
 
-const BOOK = { id: 'b1', title: '测试书', chapterCount: 4, sections: [{ index: 0, title: '一' }, { index: 1, title: '二' }] }
+// Chapters, not spine documents: each chapter sits in its own document here so
+// that a CFI's spine step still identifies exactly one chapter.
+const BOOK = {
+  id: 'b1',
+  title: '测试书',
+  chapterCount: 4,
+  sections: [
+    { index: 0, title: '一', docIndex: 0, href: 'a.xhtml' },
+    { index: 1, title: '二', docIndex: 1, href: 'b.xhtml' },
+    { index: 2, title: '三', docIndex: 2, href: 'c.xhtml' },
+    { index: 3, title: '四', docIndex: 3, href: 'd.xhtml' },
+  ],
+}
 
 /** @param {string} method @param {string} url @param {unknown} [body] @param {Record<string,string>} [headers] */
 function request(method, url, body, headers) {
@@ -55,6 +67,7 @@ function mount(progress) {
   const library = {
     async list() { return [BOOK] },
     async meta(id) { return id === BOOK.id ? BOOK : null },
+    async sections() { return BOOK.sections },
     async progress() { return progress },
   }
   const state = { activeBookId: BOOK.id, lastSelection: null }
@@ -114,12 +127,15 @@ test('routes: asking without a selection still fails closed when there is no pro
   assert.match(res.body, /进度门/)
 })
 
-test('tools: read_text_window refuses an unread section and never touches the library', async () => {
+test('tools: read_text_window refuses an unread section before any text is read', async () => {
   const registered = []
   const ctx = { tools: { register(definition) { registered.push(definition); return () => {} } } }
   const library = {
     async list() { return [BOOK] },
     async meta() { return BOOK },
+    // Needed to turn a chapter number into the document it lives in; reading
+    // the text itself is what must not happen.
+    async sections() { return BOOK.sections },
     async progress() { return { sectionIndex: 1, positionSectionIndex: 1, sectionCount: 4 } },
     async textWindow() { throw new Error('library read must not happen for an unread section') },
   }
@@ -146,6 +162,7 @@ test('takeaway: the anchor decides the chapter and an unread anchor is refused',
   const library = {
     async list() { return [BOOK] },
     async meta() { return BOOK },
+    async sections() { return BOOK.sections },
     async progress() { return { sectionIndex: 1, positionSectionIndex: 1, sectionCount: 4 } },
     async takeaways() { return [] },
     async cards() { return [] },

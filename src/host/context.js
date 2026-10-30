@@ -97,10 +97,12 @@ export async function summaryIndexText(library, bookId, progress, options = {}) 
  * @returns {Promise<{ text: string, sectionIndex: number, title: string | null, window: any }>}
  */
 export async function selectionWindow(library, bookId, progress, selection) {
-  const sectionIndex = resolveSectionIndex({ cfi: selection.cfi, sectionIndex: selection.sectionIndex })
+  const sections = await library.sections(bookId)
+  // The chapter comes from a chapter number or from the CFI's document, never
+  // from the CFI's own step number: a spine step is not a chapter any more.
+  const sectionIndex = resolveChapterIndex(sections, { cfi: selection.cfi, sectionIndex: selection.sectionIndex })
   requireReadable({ sectionIndex }, progress, { what: '读取选中原文' })
   const index = /** @type {number} */ (sectionIndex)
-  const sections = await library.sections(bookId)
   const section = sections.find((item) => item.index === index)
   const fullText = String(section?.text ?? '')
   const quote = typeof selection.quote === 'string' ? selection.quote.trim() : ''

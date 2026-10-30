@@ -8,6 +8,7 @@
  */
 
 import { buildCfi, tryParseCfi } from '../shared/cfi.js'
+import { resolveChapterIndex } from './books.js'
 import { requireReadable, summaryCeiling } from '../shared/spoiler.js'
 import { clip } from '../shared/retrieval.js'
 import { describeDue, replay, QUALITY } from '../shared/scheduler.js'
@@ -117,10 +118,12 @@ export function registerTools(deps) {
           }
           target.sectionIndex = fallback
         }
-        requireReadable(target, progress, { what: '读取原文' })
+        const sections = await library.sections(meta.id)
+        const chapter = resolveChapterIndex(sections, target)
+        requireReadable({ sectionIndex: chapter }, progress, { what: '读取原文' })
         const window = await selectionWindow(library, meta.id, progress, {
           cfi: target.cfi,
-          sectionIndex: target.sectionIndex,
+          sectionIndex: chapter,
           quote: typeof args?.quote === 'string' ? args.quote : null,
           before: typeof args?.before === 'number' ? Math.min(args.before, 1200) : 300,
           after: typeof args?.after === 'number' ? Math.min(args.after, 1200) : 300,
@@ -214,7 +217,8 @@ export function registerTools(deps) {
         const sectionIndex =
           typeof args?.sectionIndex === 'number' ? args.sectionIndex : (progress?.positionSectionIndex ?? progress?.sectionIndex ?? 0)
         requireReadable({ sectionIndex }, progress, { what: '记录收获' })
-        const cfi = typeof args?.cfi === 'string' && tryParseCfi(args.cfi) ? args.cfi : buildCfi(sectionIndex)
+        const chapterRecord = (await library.sections(meta.id)).find((item) => item.index === sectionIndex)
+        const cfi = typeof args?.cfi === 'string' && tryParseCfi(args.cfi) ? args.cfi : buildCfi(chapterRecord?.docIndex ?? 0)
         /** @type {any} */
         const takeaway = {
           type: args?.type,
