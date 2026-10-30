@@ -1,8 +1,34 @@
-# 伴读（dsh-reading-companion）
+<div align="center">
 
-以**阅读进度为唯一坐标**的伴读插件：讨论读者已经读过的部分，追问、帮他想清楚、把讨论收成能回顾的东西。它不替读者读书，也不做"整本书摘要 + 自由问答"的通用问答壳。
+# 伴读 · dsh-reading-companion
 
-支持的导入格式：**EPUB、MOBI、FB2/FBZ、TXT、Markdown、HTML、CBZ**。除 EPUB 以外的格式会先被规整成一本自己生成的 EPUB（`src/host/epub-build.js`），再走同一条渲染 / 索引 / CFI / 进度门的管线——因为阅读器和索引器必须对"第 3 章"指同一段文字，否则进度门比较的是两本不同的书。
+**只聊你读过的部分。**
+
+一个把「阅读进度」当硬坐标的 DSH 伴读插件：就着你已经读过的文字追问你、帮你想清楚，再把讨论收成能跳回原文的东西。它不替你把书读了。
+
+[![DSH plugin](https://img.shields.io/badge/DSH-plugin-4f46e5)](https://github.com/awesome-dsh-plugin/awesome-dsh-plugin)
+[![license: MIT](https://img.shields.io/badge/license-MIT-3da639)](./LICENSE)
+[![node](https://img.shields.io/badge/node-%E2%89%A520-339933)](./package.json)
+
+</div>
+
+![左边是正文，右边就着你刚读完的那段聊](assets/screenshot-1.png)
+
+```bash
+dsh plugin --profile desktop add "github:OtakuP417/dsh-reading-companion"
+```
+
+装完刷新页面：左侧边栏多一个书本图标，点开是占满主区的「伴读」页。
+
+## 它和「整本书摘要 + 自由问答」哪里不同
+
+| | 常见的读书插件 | 伴读 |
+| --- | --- | --- |
+| 模型看到什么 | 全书正文，靠提示词"请不要剧透" | **只有你读到的章节**：未读章节的原文与摘要根本不在上下文里 |
+| 防剧透靠什么 | 提示词承诺 | 检索入口与工具入口**函数级拒绝**，还有一层同步兜底门；未读块压根不进索引 |
+| 位置怎么记 | 百分比 / 字符偏移（换字号就漂） | EPUB **CFI**（划线、笔记、收获、卡片共用同一个锚点） |
+| 默认动作 | 给你总结 | **反问你**：先复述你的预设，再给一个具体的、能马上回答的追问 |
+| 复习 | 依赖模型出题 | 纯规则出卡 + SM-2 排期，**没有模型也照常复习** |
 
 ## 它守住的五条线
 
@@ -12,16 +38,40 @@
 4. **AI 的默认动作是提问。** 解释性/评价性问题：先用一句话复述读者的预设，再给一个具体、能马上回答的追问；只有事实型问题才直接答，答完仍以轻追问收尾。
 5. **复习不依赖模型。** 收获 → 卡片是纯规则（`src/shared/cards.js`），排期是 SM-2（`vendor/supermemo2`，MIT，只做适配）；模型只在读者主动点"换一种问法 / 拆小一点 / 和另一张对比"时参与。
 
+## 三个面板
+
+讨论收尾时按「本章收口」，它只拿**你自己的收获**复盘这一章，不回头重读原文：
+
+![收获：按章分组，点「回到原文」跳回那句话](assets/screenshot-2.png)
+
+复习面板不做测验打分，动作只有一个——**看一眼，决定要不要重读**：
+
+![复习：正面是问题，背面是讨论摘要与 CFI](assets/screenshot-3.png)
+
+回忆不起来就点「回到原文」，落回 foliate-js 里那句话的位置。
+
 ## 安装
 
 ```bash
-# 从 GitHub 安装（本仓库即可安装，lib/ 里是预构建产物，不需要本地构建）
 dsh plugin --profile desktop add "github:OtakuP417/dsh-reading-companion"
 ```
 
 装完后刷新 GUI：左侧边栏会多出一个书本图标，点开就是「伴读」整页（不再占用会话里的页签）。数据落在 `$DSH_HOME/reading-companion/`（默认 `C:\Users\<你>\.dsh\reading-companion\`）。
 
 改过源码之后重装：Host 侧是 ESM、不做热替换，`plugin remove` + `plugin add` 在同一进程里仍可能拿到旧模块，**换新进程**（重启应用）最稳。
+
+## 支持的格式
+
+| 格式 | 怎么读 | 说明 |
+| --- | --- | --- |
+| EPUB | 原样渲染 | CFI 原生可用 |
+| MOBI（PalmDOC / HUFF-CDIC） | 抽文字 → 重排成 EPUB | 不带图片；KF8/AZW3 明确拒绝 |
+| FB2 / FBZ | 按 `<section>` 拆章 → 重排 | 嵌套章节按文档序展平 |
+| TXT / Markdown / HTML | 按标题或 `第 N 章` 拆章 → 重排 | GB18030 / Big5 自动回退 |
+| CBZ（图片书） | 每页一节，图片随书 | 没有文字，面板会说清楚"不能讨论" |
+| PDF / AZW3 | **拒绝并给理由** | 见「已知限制」 |
+
+除 EPUB 以外的格式都会先规整成一本自己生成的 EPUB（`src/host/epub-build.js`），再走同一条渲染 / 索引 / CFI / 进度门管线——因为阅读器和索引器必须对"第 3 章"指同一段文字，否则进度门比较的是两本不同的书。
 
 ## 目录
 
@@ -62,7 +112,7 @@ scripts/        三个验收脚本：构建产物自检、客户端产物挂载�
 ```bash
 npm install       # esbuild + 自检用的 react（产物里 react 仍是 external）
 npm run build     # lib/index.js + lib/client.js
-npm test          # node --test "test/*.test.js"（54 条）
+npm test          # node --test "test/*.test.js"（58 条）
 npm run verify:bundle   # 拿构建产物本身跑一遍门与路由
 npm run verify:client   # 在 Node 里挂载客户端产物，确认两个席位都能渲染
 ```
@@ -75,7 +125,7 @@ npm run verify:client   # 在 Node 里挂载客户端产物，确认两个席位
 Client 侧产物（`lib/client.js`）刷新页面即可。
 
 真实安装路径上的验收记录与重跑方式见 `../docs/verification.md`：
-`node --test` 54 条、构建产物 12 条、客户端挂载 1 条、真实 Host 18 条（含未读锚点被拒、
+单测 58 条、构建产物 12 条、客户端挂载 1 条、真实 Host 18 条（含未读锚点被拒、
 已读锚点可溯源、摘要只到读者当前章、卡片与排期、断模型时复习照常、7 种格式导入）。
 
 ## 数据布局

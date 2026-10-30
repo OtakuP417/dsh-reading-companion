@@ -293,20 +293,25 @@ export function registerRoutes(deps) {
           sectionIndex: typeof body?.sectionIndex === 'number' ? body.sectionIndex : null,
           quote: typeof body?.quote === 'string' ? body.quote : null,
         }
+        // No selection (just "ask about where I am") is a normal case: the UI says
+        // 不划线也可以问已读过的内容. Center the window on the reader's current chapter
+        // instead of on nothing — an empty target would fail closed and look like a bug.
+        const anchored = Boolean(selection.cfi) || typeof selection.sectionIndex === 'number'
+        const target = anchored
+          ? { cfi: selection.cfi, sectionIndex: selection.sectionIndex }
+          : { cfi: null, sectionIndex: progress?.positionSectionIndex ?? 0 }
         // Hard gate BEFORE any text is assembled: an unread anchor is refused here.
         // It runs before the model-route check on purpose — the refusal must not
         // depend on whether a model happens to be available.
-        if (selection.cfi || typeof selection.sectionIndex === 'number') {
-          requireReadable({ cfi: selection.cfi, sectionIndex: selection.sectionIndex }, progress, { what: '就这段原文讨论' })
-        }
+        requireReadable(target, progress, { what: '就这段原文讨论' })
 
         const route = resolveRoute(ctx, config, null)
         if (!route) return sendJson(res, 503, { ok: false, error: '这个会话没有可用的模型路由，暂时无法对话。复习和笔记不受影响。' })
 
         const window = await selectionWindow(library, bookId, progress, {
-          cfi: selection.cfi,
-          sectionIndex: selection.sectionIndex,
-          quote: selection.quote,
+          cfi: anchored ? selection.cfi : null,
+          sectionIndex: target.sectionIndex,
+          quote: anchored ? selection.quote : null,
           before: config.windowChars ?? 300,
           after: config.windowChars ?? 300,
         }).catch((error) => {

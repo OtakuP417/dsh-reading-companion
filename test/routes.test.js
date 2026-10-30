@@ -96,6 +96,24 @@ test('routes: /note is refused for an unread cfi', async () => {
   assert.equal(res.statusCode, 403, `expected 403, got ${res.statusCode}: ${res.body}`)
 })
 
+test('routes: asking without a selection falls back to where the reader is', async () => {
+  // The panel advertises "不划线也可以问已读过的内容"; an empty anchor used to fail
+  // closed as unknownTarget, which read to the reader as a bug.
+  const { routes } = mount({ sectionIndex: 1, positionSectionIndex: 1, sectionCount: 4 })
+  const { req, res } = request('POST', '/__reading/ask', { question: '这一章说了什么？' })
+  await routes.handler(req, res)
+  assert.equal(res.statusCode, 503, `expected 503 (no model route), got ${res.statusCode}: ${res.body}`)
+  assert.match(res.body, /模型路由/)
+})
+
+test('routes: asking without a selection still fails closed when there is no progress', async () => {
+  const { routes } = mount(null)
+  const { req, res } = request('POST', '/__reading/ask', { question: '这一章说了什么？' })
+  await routes.handler(req, res)
+  assert.equal(res.statusCode, 403, `expected 403, got ${res.statusCode}: ${res.body}`)
+  assert.match(res.body, /进度门/)
+})
+
 test('tools: read_text_window refuses an unread section and never touches the library', async () => {
   const registered = []
   const ctx = { tools: { register(definition) { registered.push(definition); return () => {} } } }
