@@ -35,14 +35,22 @@ function Btn({ label, onClick, active, disabled, primary, title }) {
 }
 
 /** @param {{ view: any }} props */
-function ProgressLine({ view }) {
+function ProgressLine({ view, tocCount = 0 }) {
   if (!view || view.ceiling === null) return <span className="drc-dim">还没开始读</span>
+  // A converted book often packs a dozen chapters into one spine file. Saying
+  // "共 5 章" for a book whose own table of contents lists 40 entries reads as
+  // "the import lost half the book", so the two counts are named separately.
+  const split = tocCount > 0 && tocCount !== view.chapterCount
   return (
     <span className="drc-progress">
       <span>已读到第 {view.ceiling + 1} 章</span>
       {view.ceilingTitle ? <span className="drc-dim">「{view.ceilingTitle}」</span> : null}
       {view.atCeiling ? null : <span className="drc-dim">· 现在在第 {view.position + 1} 章</span>}
-      <span className="drc-dim">（共 {view.chapterCount} 章）</span>
+      {split ? (
+        <span className="drc-dim">（正文 {view.chapterCount} 段 · 目录 {tocCount} 条）</span>
+      ) : (
+        <span className="drc-dim">（共 {view.chapterCount} 章）</span>
+      )}
     </span>
   )
 }
@@ -59,6 +67,7 @@ export default function App() {
   const [summaries, setSummaries] = useState(null)
   const [askedWithoutWindow, setAskedWithoutWindow] = useState(false)
   const [note, setNote] = useState(null)
+  const [tocOpen, setTocOpen] = useState(false)
 
   const hostRef = useRef(null)
   const readerRef = useRef(null)
@@ -70,6 +79,7 @@ export default function App() {
   const activeBookId = snapshot?.activeBookId ?? null
   const progressView = snapshot?.progress?.readthrough ?? null
   const bookInfo = snapshot?.book ?? null
+  const toc = Array.isArray(bookInfo?.toc) ? bookInfo.toc : []
   const textless = bookInfo?.textless === true
   const cards = snapshot?.cards ?? []
   const takeaways = snapshot?.takeaways ?? []
@@ -297,7 +307,7 @@ export default function App() {
               <span className="drc-badge">{FORMAT_LABEL[bookInfo.format] ?? bookInfo.format}</span>
             ) : null}
           </span>
-          <ProgressLine view={progressView} />
+          <ProgressLine view={progressView} tocCount={toc.length} />
           <div className="drc-meter" aria-hidden="true">
             <div
               className="drc-meter-fill"
@@ -328,6 +338,9 @@ export default function App() {
                 </option>
               ))}
             </select>
+          ) : null}
+          {toc.length > 0 ? (
+            <Btn label={`目录 ${toc.length}`} onClick={() => setTocOpen((open) => !open)} title="跳到书里的任意一章" />
           ) : null}
           <Btn label="导入书籍" onClick={() => fileRef.current?.click()} title="EPUB / MOBI / FB2 / TXT / Markdown / HTML / CBZ" />
           <Btn label="A-" onClick={() => changeFont(-1)} title="字号变小" />
@@ -395,6 +408,36 @@ export default function App() {
               </div>
             ) : null}
           </div>
+          {tocOpen && toc.length > 0 ? (
+            <div className="drc-toc" role="dialog" aria-label="目录">
+              <div className="drc-toc-head">
+                <span>目录 · {toc.length} 条</span>
+                <button type="button" className="drc-link" onClick={() => setTocOpen(false)}>
+                  关闭
+                </button>
+              </div>
+              <div className="drc-toc-list">
+                {toc.map((item) => {
+                  const unread = (progressView?.ceiling ?? -1) < item.sectionIndex
+                  return (
+                    <button
+                      key={item.index}
+                      type="button"
+                      className={cx('drc-toc-item', unread && 'drc-toc-unread')}
+                      onClick={() => {
+                        setTocOpen(false)
+                        void readerRef.current?.goToHref(item.href)
+                      }}
+                      title={unread ? '还没读到这里；跳过去之后才能聊它' : '跳到这里'}
+                    >
+                      <span className="drc-toc-title">{item.title}</span>
+                      {unread ? <span className="drc-dim">未读</span> : null}
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+          ) : null}
           {activeBookId ? (
             <div className="drc-page-turn">
               <Btn label="上一页" onClick={() => void readerRef.current?.prev()} />

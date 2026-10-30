@@ -76,9 +76,12 @@ export class Reader {
       this.#watchWidth()
       this.applyFontSize(this.fontSize)
       const location = options.cfi ?? null
-      await view.init({ lastLocation: location, showTextStart: !location })
+      // One navigation, not two: init() already resolves a CFI (view.init ->
+      // resolveNavigation -> resolveCFI). Navigating again afterwards made the
+      // reader paint the text start for a frame and then jump to the saved
+      // position, which reads as "it skipped pages by itself".
+      await view.init({ lastLocation: location ?? undefined, showTextStart: !location })
       this.ready = true
-      if (location) await view.goTo(location).catch(() => {})
       return book
     } catch (error) {
       this.ready = false
@@ -179,6 +182,17 @@ export class Reader {
       } catch {
         // unparsable/stale anchor: stay where the reader is
       }
+    }
+  }
+
+  /** Jump to a table-of-contents target (`chapter.xhtml#anchor`). */
+  async goToHref(href) {
+    if (!this.view || !href) return
+    try {
+      await this.view.goTo(href)
+    } catch {
+      const path = String(href).split('#')[0]
+      await this.view.goTo(path).catch(() => {})
     }
   }
 

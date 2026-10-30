@@ -149,6 +149,7 @@ export function registerRoutes(deps) {
             author: meta.author ?? '',
             language: meta.language ?? '',
             chapterCount: meta.chapterCount ?? null,
+            toc: Array.isArray(meta.toc) ? meta.toc : [],
             format: meta.format ?? 'epub',
             textless: meta.textless === true,
             warnings: meta.warnings ?? [],

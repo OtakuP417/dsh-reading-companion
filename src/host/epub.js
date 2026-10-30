@@ -214,6 +214,77 @@ function readTocTitles(files, opf) {
 }
 
 /**
+ * Collect the book's own table of contents, in reading order.
+ *
+ * One entry per navigation target, fragments kept: the panel uses them to jump,
+ * and the count is what tells a reader whether "5 sections" is the whole book.
+ *
+ * @param {Map<string, Buffer>} files
+ * @param {ReturnType<typeof parseOpf>} opf
+ * @returns {{ title: string, target: string, fragment: string }[]}
+ */
+function readTocEntries(files, opf) {
+  /** @type {{ title: string, target: string, fragment: string }[]} */
+  const entries = []
+
+  const navItem = [...opf.manifest.values()].find((item) => /\bnav\b/.test(item.properties))
+  if (navItem) {
+    const bytes = files.get(navItem.path)
+    if (bytes) {
+      const html = bytes.toString('utf8')
+      const navBlock = /<nav\b[^>]*epub:type\s*=\s*["']toc["'][\s\S]*?<\/nav>/i.exec(html) ?? /<nav\b[\s\S]*?<\/nav>/i.exec(html)
+      for (const tag of navBlock?.[0].match(/<a\b[^>]*>[\s\S]*?<\/a>/gi) ?? []) {
+        const open = /<a\b[^>]*>/i.exec(tag)?.[0] ?? ''
+        const href = attr(open, 'href')
+        const title = htmlToText(tag).trim()
+        if (!href || !title || href.startsWith('http')) continue
+        const [pathPart, fragment = ''] = href.split('#')
+        entries.push({
+          title,
+          target: resolveHref(navItem.path, pathPart),
+          fragment: decodeFragment(fragment),
+        })
+      }
+    }
+  }
+
+  if (entries.length === 0) {
+    const ncxItem =
+      (opf.tocId ? opf.manifest.get(opf.tocId) : null) ??
+      [...opf.manifest.values()].find((item) => item.mediaType === 'application/x-dtbncx+xml')
+    if (ncxItem) {
+      const bytes = files.get(ncxItem.path)
+      if (bytes) {
+        const xml = bytes.toString('utf8')
+        for (const block of xml.match(/<navPoint\b[\s\S]*?<\/navPoint>/gi) ?? []) {
+          const title = htmlToText(/<text>([\s\S]*?)<\/text>/i.exec(block)?.[1] ?? '').trim()
+          const src = attr(/<content\b[^>]*>/i.exec(block)?.[0] ?? '', 'src')
+          if (!title || !src) continue
+          const [pathPart, fragment = ''] = src.split('#')
+          entries.push({
+            title,
+            target: resolveHref(ncxItem.path, pathPart),
+            fragment: decodeFragment(fragment),
+          })
+        }
+      }
+    }
+  }
+
+  return entries
+}
+
+/** Fragments in EPUBs are percent-encoded often enough to matter. */
+function decodeFragment(fragment) {
+  if (!fragment) return ''
+  try {
+    return decodeURIComponent(fragment)
+  } catch {
+    return fragment
+  }
+}
+
+/**
  * Parse an EPUB container into spine sections with plain text.
  *
  * @param {Buffer} bytes
@@ -234,6 +305,7 @@ export function parseEpub(bytes) {
   const opfText = opfBytes.toString('utf8')
   const opf = parseOpf(opfText, opfPath)
   const tocTitles = readTocTitles(files, opf)
+  const tocEntries = readTocEntries(files, opf)
 
   const sections = []
   for (const spineItem of opf.spine) {
@@ -263,12 +335,32 @@ export function parseEpub(bytes) {
     section.title = firstLine ? firstLine.slice(0, 24) : ''
   }
 
+  // The book's own navigation, mapped onto the spine sections we index. A
+  // converted book often has one huge spine file holding a dozen chapters, so
+  // this list — not `chapterCount` — is what the reader recognises as the book.
+  const sectionByPath = new Map(sections.map((section) => [normPath(section.path), section]))
+  const toc = []
+  for (const entry of tocEntries) {
+    const section = sectionByPath.get(normPath(entry.target))
+    if (!section) continue
+    if (toc.length >= 500) break
+    toc.push({
+      index: toc.length,
+      title: entry.title,
+      sectionIndex: section.index,
+      // The renderer resolves a TOC href against the OPF, so this must be the
+      // archive path (`OEBPS/chapter1.xhtml`), not the manifest's relative href.
+      href: entry.fragment ? `${section.path}#${entry.fragment}` : section.path,
+    })
+  }
+
   return {
     title: opf.title || '未命名书籍',
     author: opf.author || '',
     language: opf.language || '',
     chapterCount: sections.length,
     sections,
+    toc,
   }
 }
 

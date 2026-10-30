@@ -40,7 +40,24 @@ export class Library {
 
   /** @param {string} bookId */
   async meta(bookId) {
-    return readJson(this.store.bookPath(bookId, 'meta.json'), null)
+    const meta = await readJson(this.store.bookPath(bookId, 'meta.json'), null)
+    if (!meta) return null
+    // Books imported before the table of contents was indexed get it filled in
+    // from the stored source, so an old library does not stay stuck at "5 章".
+    const tocStale = !Array.isArray(meta.toc) || meta.toc.length === 0 || (meta.tocVersion ?? 1) < 2
+    if (tocStale) {
+      try {
+        const bytes = await this.sourceBytes(bookId)
+        if (bytes) {
+          meta.toc = parseEpub(bytes).toc ?? []
+          meta.tocVersion = 2
+          await writeJson(this.store.bookPath(bookId, 'meta.json'), meta)
+        }
+      } catch {
+        meta.toc = []
+      }
+    }
+    return meta
   }
 
   /**
@@ -92,6 +109,8 @@ export class Library {
       author: parsed.author,
       language: parsed.language,
       chapterCount: sections.length,
+      toc: parsed.toc ?? [],
+      tocVersion: 2,
       sections: sections.map(({ index, href, title, chars }) => ({ index, href, title, chars })),
       fileName: options.fileName ?? null,
       importedAt: new Date().toISOString(),
