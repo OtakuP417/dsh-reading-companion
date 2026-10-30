@@ -58,7 +58,57 @@ dsh plugin --profile desktop add "github:OtakuP417/dsh-reading-companion"
 
 装完后刷新 GUI：左侧边栏会多出一个书本图标，点开就是「伴读」整页（不再占用会话里的页签）。数据落在 `$DSH_HOME/reading-companion/`（默认 `C:\Users\<你>\.dsh\reading-companion\`）。
 
-改过源码之后重装：Host 侧是 ESM、不做热替换，`plugin remove` + `plugin add` 在同一进程里仍可能拿到旧模块，**换新进程**（重启应用）最稳。
+### 换一台电脑装
+
+一条命令就够，**不需要**在那台机器上装 Node、跑 `npm install` 或 `npm run build`——`lib/` 里是预构建产物，已经在仓库里：
+
+```bash
+dsh plugin --profile desktop add "github:OtakuP417/dsh-reading-companion"
+```
+
+前置条件只有两个：
+
+- DSH 版本满足 `engines.dsh`（`>=0.2.0-rc.1 <0.3.0-0`），不满足会在装之前就被拦下；
+- 能访问 `github.com`（`dsh plugin` 内部用 pnpm 拉源码包）。
+
+`dsh` 不在 PATH 里时用桌面版的启动器（Windows 上是
+`"C:\Program Files\DeepSeek Harness\resources\runtime\cli\bin\dsh.cmd"`，
+随安装位置而变）；profile 名字也要对上——桌面版是 `desktop`，Web 部署可能是 `web`。
+
+### 离线 / github 连不上
+
+插件不依赖任何在线服务（只有模型对话需要），所以本地目录安装同样完整：
+
+1. 仓库页 → **Code → Download ZIP**（或 `git clone`）→ 解压；
+2. `dsh plugin --profile desktop add "D:\解压出来的\dsh-reading-companion-main"`。
+
+这就是开发时的 `link:` 安装：目录里的改动下次加载即生效，适合改代码。
+
+### 更新 / 卸载
+
+```bash
+# 更新：再跑一次同一条 add，会拉到最新 main
+dsh plugin --profile desktop add "github:OtakuP417/dsh-reading-companion"
+
+# 卸载
+dsh plugin --profile desktop remove dsh-reading-companion
+```
+
+**Host 侧没有热重载**：`lib/index.js` 是 ESM，Node 按路径缓存模块，`remove` + `add`
+在同一进程里也可能拿到旧模块。改过代码或更新插件之后，**重启应用**最稳；
+只改了 `lib/client.js` 刷新页面即可。
+
+### 带着阅读数据换机器
+
+进度、笔记、收获、卡片、复习记录全在数据根目录：
+
+```
+Windows: %USERPROFILE%\.dsh\reading-companion\
+macOS / Linux: ~/.dsh/reading-companion/
+```
+
+整份拷过去就能接着读（纯 JSON / JSONL，没有数据库、没有锁）。只想同步进度的话，
+拷 `progress/` 一个目录也够。
 
 ## 支持的格式
 
