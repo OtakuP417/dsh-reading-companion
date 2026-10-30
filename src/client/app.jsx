@@ -63,6 +63,7 @@ export default function App() {
   const [askedWithoutWindow, setAskedWithoutWindow] = useState(false)
   const [note, setNote] = useState(null)
   const [tocOpen, setTocOpen] = useState(false)
+  const [pageInfo, setPageInfo] = useState(null)
 
   const hostRef = useRef(null)
   const readerRef = useRef(null)
@@ -104,6 +105,7 @@ export default function App() {
       try {
         await readerRef.current.open(api.bookUrl(bookId), {
           cfi: cfi ?? null,
+          onPage: (info) => setPageInfo(info),
           onRelocate: (detail) => {
             if (!detail?.cfi) return
             if (saveTimer.current) window.clearTimeout(saveTimer.current)
@@ -438,7 +440,13 @@ export default function App() {
           {activeBookId ? (
             <div className="drc-page-turn">
               <Btn label="上一页" onClick={() => void readerRef.current?.prev()} />
-              <span className="drc-dim">{busy ? busy : 'PageUp / PageDown 也可以翻页'}</span>
+              <span className="drc-dim">
+                {busy
+                  ? busy
+                  : pageInfo && pageInfo.pages > 0
+                    ? `第 ${pageInfo.page + 1} / ${pageInfo.pages} 页`
+                    : 'PageUp / PageDown 也可以翻页'}
+              </span>
               <Btn label="下一页" onClick={() => void readerRef.current?.next()} />
             </div>
           ) : null}

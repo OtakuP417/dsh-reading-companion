@@ -50,6 +50,10 @@ export class Reader {
 
     view.addEventListener('relocate', (event) => {
       const detail = event.detail
+      const renderer = this.view?.renderer
+      if (renderer && typeof renderer.page === 'number' && typeof renderer.pages === 'number') {
+        options.onPage?.({ page: renderer.page, pages: renderer.pages, section: detail.section?.current ?? null })
+      }
       options.onRelocate?.({
         cfi: detail.cfi,
         // The spine document, not the chapter: only the host knows how the
@@ -128,7 +132,10 @@ export class Reader {
     const width = Math.round(this.host.clientWidth || this.host.getBoundingClientRect?.().width || 0)
     if (width <= 0) return
     const columns = width >= 1300 ? 2 : 1
-    const inline = columns === 2 ? 640 : Math.max(480, Math.min(780, width - 8))
+    // The column must never be wider than the panel, or page turns advance the
+    // container by less than a column and each page skips a slice of text.
+    const usable = Math.max(200, width - 8)
+    const inline = columns === 2 ? Math.min(640, Math.floor(usable / 2)) : Math.min(780, usable)
     const key = `${columns}:${Math.round(inline / 20) * 20}`
     if (key === this.layoutKey) return
     this.layoutKey = key
