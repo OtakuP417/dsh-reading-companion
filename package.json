@@ -1,0 +1,65 @@
+{
+  "name": "dsh-reading-companion",
+  "version": "0.1.0",
+  "description": "伴读 — 以阅读进度为唯一坐标的阅读伴侣：多格式导入、导读、追问、收束与回顾。",
+  "keywords": [
+    "deepseek-harness",
+    "dsh-plugin",
+    "reading",
+    "epub",
+    "mobi",
+    "fb2",
+    "socratic"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/OtakuP417/dsh-reading-companion.git"
+  },
+  "homepage": "https://github.com/OtakuP417/dsh-reading-companion#readme",
+  "bugs": {
+    "url": "https://github.com/OtakuP417/dsh-reading-companion/issues"
+  },
+  "author": "OtakuP417 <406036147@qq.com>",
+  "type": "module",
+  "main": "lib/index.js",
+  "exports": {
+    ".": "./lib/index.js",
+    "./client": "./lib/client.js",
+    "./locale/*.json": "./locale/*.json",
+    "./icon": "./icon.svg"
+  },
+  "files": [
+    "lib",
+    "cordis.patch.yml",
+    "locale/*.json",
+    "icon.svg",
+    "README.md",
+    "LICENSE",
+    "THIRD-PARTY-NOTICES.md"
+  ],
+  "engines": {
+    "node": ">=20",
+    "dsh": ">=0.2.0-rc.1 <0.3.0-0"
+  },
+  "scripts": {
+    "test": "node --test \"test/*.test.js\"",
+    "build": "node build.mjs",
+    "verify:bundle": "node scripts/verify-bundle.mjs",
+    "verify:client": "node scripts/verify-client.mjs",
+    "prepublishOnly": "node build.mjs && node --test \"test/*.test.js\""
+  },
+  "devDependencies": {
+    "esbuild": "^0.25.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web"
+    }
+  }
+}
