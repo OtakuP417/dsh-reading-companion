@@ -13,13 +13,13 @@ import { registerTools } from '../src/host/tools.js'
 
 const BOOK = { id: 'b1', title: '测试书', chapterCount: 4, sections: [{ index: 0, title: '一' }, { index: 1, title: '二' }] }
 
-/** @param {string} method @param {string} url @param {unknown} [body] */
-function request(method, url, body) {
+/** @param {string} method @param {string} url @param {unknown} [body] @param {Record<string,string>} [headers] */
+function request(method, url, body, headers) {
   const payload = body === undefined ? '' : JSON.stringify(body)
   const req = {
     method,
     url,
-    headers: { 'content-type': 'application/json' },
+    headers: { 'content-type': 'application/json', ...(headers ?? {}) },
     on(event, handler) {
       if (event === 'data' && payload) handler(Buffer.from(payload))
       if (event === 'end') handler()
@@ -197,4 +197,69 @@ test('takeaway: the anchor decides the chapter and an unread anchor is refused',
   assert.equal(read.statusCode, 200, read.body)
   assert.equal(pushes[0].chapterIndex, 1)
   assert.equal(pushes[0].cfi, 'epubcfi(/6/4!/4/2/2:0)')
+})
+
+test('import: a CJK file name arrives percent-encoded and is decoded once', async () => {
+  const seen = []
+  const library = {
+    async list() { return [] },
+    async meta() { return null },
+    async importFile(bytes, options) {
+      seen.push({ size: bytes.length, fileName: options?.fileName })
+      return { id: 'b9', title: '灯下的约定', chapterCount: 1, format: 'epub', warnings: [] }
+    },
+  }
+  const routes = registerRoutes({
+    ctx: { webServer: { register() { return () => {} } } },
+    library,
+    cache: {},
+    summaries: { ensure() {}, status() { return {} } },
+    config: {},
+    state: { activeBookId: null, lastSelection: null },
+    persistActiveBook: async () => {},
+  })
+
+  const res = {
+    statusCode: 0,
+    headers: /** @type {Record<string, string>} */ ({}),
+    body: '',
+    setHeader(key, value) { this.headers[key] = value },
+    end(value) { this.body = String(value ?? '') },
+  }
+  // fetch refuses to send a raw CJK header value at all, so the client
+  // percent-encodes it; the host must undo exactly that.
+  const header = encodeURIComponent('灯下的约定.epub')
+  assert.equal(/^[\x20-\x7e]*$/.test(header), true, 'the header must stay ISO-8859-1')
+
+  const chunks = [Buffer.from([0x50, 0x4b, 0x03, 0x04])]
+  const req = {
+    method: 'POST',
+    url: '/__reading/import',
+    headers: { 'content-type': 'application/epub+zip', 'x-file-name': header },
+    destroy() {},
+    on(event, listener) {
+      if (event === 'data') for (const chunk of chunks) queueMicrotask(() => listener(chunk))
+      if (event === 'end') queueMicrotask(() => listener())
+      return req
+    },
+  }
+  await routes.handler(req, res)
+  assert.equal(res.statusCode, 200, res.body)
+  assert.deepEqual(seen, [{ size: 4, fileName: '灯下的约定.epub' }])
+
+  // A raw name (older client) or a broken escape still reaches the importer.
+  const raw = Buffer.from([0x50, 0x4b, 0x03, 0x04])
+  const req2 = {
+    ...req,
+    headers: { 'content-type': 'application/epub+zip', 'x-file-name': 'book.epub' },
+    on(event, listener) {
+      if (event === 'data') queueMicrotask(() => listener(raw))
+      if (event === 'end') queueMicrotask(() => listener())
+      return req2
+    },
+  }
+  const res2 = { ...res, statusCode: 0, body: '' }
+  await routes.handler(req2, res2)
+  assert.equal(res2.statusCode, 200, res2.body)
+  assert.equal(seen[1].fileName, 'book.epub')
 })

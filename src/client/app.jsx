@@ -163,7 +163,7 @@ export default function App() {
     setError(null)
     setNote(null)
     try {
-      const result = await api.importEpub(file)
+      const result = await api.importFile(file)
       setSnapshot(result.state)
       activeBookRef.current = null
       setMessages([])

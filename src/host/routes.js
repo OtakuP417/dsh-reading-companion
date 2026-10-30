@@ -185,7 +185,16 @@ export function registerRoutes(deps) {
 
       // ---- import / source -------------------------------------------------
       if (method === 'POST' && path === '/import') {
-        const name = String(req.headers['x-file-name'] ?? 'book.epub')
+        // The header is percent-encoded by the client: HTTP header values must be
+        // ISO-8859-1, and half the books people import have CJK file names.
+        const rawName = String(req.headers['x-file-name'] ?? 'book.epub')
+        let name = rawName
+        try {
+          name = decodeURIComponent(rawName)
+        } catch {
+          // A client that sent the raw name (or a broken escape) still gets a try.
+        }
+        name = name.split(/[\\/]/).pop() || 'book.epub'
         const bytes = await readBody(req)
         if (bytes.length === 0) return sendJson(res, 400, { ok: false, error: '上传的文件是空的' })
         let meta

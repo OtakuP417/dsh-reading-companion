@@ -35,11 +35,16 @@ export const api = {
   state: () => request('/state'),
   setActive: (bookId) => request('/active', { method: 'POST', body: JSON.stringify({ bookId }) }),
   /** @param {File} file */
-  async importEpub(file) {
+  async importFile(file) {
     const bytes = await file.arrayBuffer()
     const response = await fetch(`${BASE}/import`, {
       method: 'POST',
-      headers: { 'content-type': 'application/epub+zip', 'x-file-name': file.name },
+      headers: {
+        'content-type': 'application/epub+zip',
+        // Header values are ISO-8859-1 (ByteString); a CJK file name would make
+        // fetch throw before the request is sent. Percent-encode it instead.
+        'x-file-name': encodeURIComponent(file.name),
+      },
       body: bytes,
     })
     const body = await response.json()
