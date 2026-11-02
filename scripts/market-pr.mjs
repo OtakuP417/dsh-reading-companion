@@ -9,6 +9,7 @@
  *
  * 前置：仓库已存在、已推上去、且已满 1 天（CI 会查，不够会挂，几小时后自己会过）。
  */
+import * as yaml from 'js-yaml'
 import { entryYml, prBody } from './listing.mjs'
 
 const API = 'https://api.github.com'
@@ -60,6 +61,15 @@ async function call(method, path, body) {
 const sleep = (ms) => new Promise((resolve) => { setTimeout(resolve, ms) })
 
 const ENTRY = entryYml({ owner: args.owner, repo: args.repo, category: args.category })
+
+// 推之前先在本地解析一遍：条目 yml 不合法时 CI 只会说「bad indentation (5:26)」，
+// 看不出是描述里的英文冒号造成的（我们踩过一次，白等两轮）。
+try {
+  yaml.load(ENTRY)
+} catch (error) {
+  console.error(`条目 YAML 不合法，先修文案再推：${error.message}`)
+  process.exit(1)
+}
 const BODY = prBody({ owner: args.owner, repo: args.repo })
 
 async function main() {
