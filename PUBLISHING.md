@@ -2,14 +2,14 @@
 
 这个仓库同时走两条路：**市场收录**（必须在社区目录里挂一条）和 **npm 发布**（可选，但推荐）。
 
-## 当前状态（2026-10-30）
+## 当前状态（2026-11-02）
 
 - ✅ 仓库已建并推送：<https://github.com/OtakuP417/dsh-reading-companion>（public，`main`，topics 含 `dsh-plugin`）
-- ⏳ **收录 PR 明天再提**：仓库创建于 `2026-10-30T05:53Z`，CI 要求「仓库满 1 天」，今天提会挂在年龄门槛上
+- ✅ **收录 PR 已提交**：<https://github.com/awesome-dsh-plugin/awesome-dsh-plugin/pull/11258>
+  （条目文件 `data/plugins/OtakuP417__dsh-reading-companion.yml`，1 个文件 +6 行，等维护者 review）
 - ⚠️ npm 暂缓：`www.npmjs.com` 的注册/登录页在当前网络下返回 403（`registry.npmjs.org` 本身是通的，已注册的账号仍可 `npm login --auth-type=legacy`）。没有 npm 包不影响收录，用户按 `github:` 形式安装即可
-- 📄 收录条目内容已写好在 `scripts/market-pr.mjs` 里，明天一条命令就能开 PR
 
-明天的命令（走 `api.github.com`，不需要打开网页；token 由 Git Credential Manager 提供）：
+重开一次 PR 的命令（走 `api.github.com`，不需要打开网页；token 由 Git Credential Manager 提供）：
 
 ```powershell
 node scripts/market-pr.mjs --owner OtakuP417 --repo dsh-reading-companion
