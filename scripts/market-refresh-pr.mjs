@@ -10,6 +10,8 @@
  *
  * GH_TOKEN 从环境变量读；本机的取法见 PUBLISHING.md（git credential fill，别打印出来）。
  */
+import { entryYml, prBody } from './listing.mjs'
+
 const API = 'https://api.github.com'
 const UPSTREAM = { owner: 'awesome-dsh-plugin', repo: 'awesome-dsh-plugin' }
 
@@ -56,42 +58,10 @@ async function call(method, path, body) {
   return payload
 }
 
-// 与 market-pr.mjs 里的 ENTRY 保持同一份文案；两边都改，或者只改一处然后重开 PR。
-const ENTRY = `url: https://github.com/${args.owner}/${args.repo}
-name: ${args.owner}/${args.repo}
-category: ${args.category}
-description:
-  en: Read a book in a sidebar panel and talk about the part you have already read; it refuses to discuss anything further on, so it cannot spoil the story. Highlights and discussion turn into takeaways, takeaways become review cards, and a card jumps back to the sentence it came from.
-  zh: 在侧栏的阅读面板里读书，只聊你已经读到的部分，后面的内容它看不到也不会说，所以不剧透。划线和讨论可以存成「收获」，收获会自动变成复习卡片，点卡片能跳回原来的那句话。
-`
-
 const slug = `${args.owner}/${args.repo}`
+const ENTRY = entryYml({ owner: args.owner, repo: args.repo, category: args.category })
+const BODY = prBody({ owner: args.owner, repo: args.repo })
 const entryPath = `data/plugins/${args.owner}__${args.repo}.yml`
-
-const BODY = `A reading companion for DSH: you read the book inside DSH and talk about the part you have already read.
-
-**What a reader does with it**
-
-1. Import a book (EPUB, MOBI, FB2, TXT, Markdown, HTML, or a CBZ comic). It opens as a full page in the left sidebar.
-2. Read and turn pages as usual. The position is saved, so reopening lands on the same passage even after changing the font size.
-3. Ask about what has been read, or highlight one sentence and ask about that sentence. Everything after the current position is not retrievable — the model cannot see it, so it cannot spoil the rest.
-4. Keep something from the conversation as a takeaway. Takeaways become small review cards, and each card jumps back to the sentence it came from.
-
-**What it is not**: a "summarize the whole book and chat about it" shell. There is no code path that hands unread text to the model.
-
-**Listing checks**
-
-- \`package.json\` declares \`dsh.bundle\` with \`dsh.bundle.patch\` → \`cordis.patch.yml\`.
-- The UI registers \`sidebar.panellist\` and \`main\`; it does not write \`document.body\`, does not replace the app root, does not fill an existing slot through DOM selectors, and styles only with \`--dsw-alias-*\` tokens.
-- The host half has no runtime dependencies; the client is one self-contained \`lib/client.js\` built into the repo, so installing from GitHub needs no build step.
-
-**Try it**
-
-\`\`\`
-dsh plugin --profile desktop add "github:${slug}"
-\`\`\`
-
-Repo: https://github.com/${slug}`
 
 async function main() {
   const pull = await call('GET', `/repos/${UPSTREAM.owner}/${UPSTREAM.repo}/pulls/${args.pr}`)

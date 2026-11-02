@@ -40,8 +40,8 @@ url: https://github.com/<owner>/dsh-reading-companion
 name: <owner>/dsh-reading-companion
 category: docs          # 见下方分类备选
 description:
-  en: A reading companion for DSH that keeps one CFI-based progress coordinate, gates every model call behind what you have actually read, and turns your own discussion into spaced-repetition cards.
-  zh: 伴读插件：以 EPUB CFI 为唯一进度坐标，把模型能看到的范围硬性限制在已读章节，并把你自己的讨论收束成可复习的卡片。
+  en: An AI reading buddy that sits next to you while you read a book — and only knows the pages you have already read, so it cannot spoil the rest. Highlight a sentence and ask about it, or just ask about what you just finished; instead of summarizing for you, it usually answers with one concrete question. Whatever you work out can be saved as a takeaway, which later becomes a review card that jumps back to the sentence.
+  zh: 读书时旁边坐一个 AI 同读的人：你读到哪儿它只知道到哪儿，所以不剧透。觉得哪句有意思就划出来问它，或者直接问刚读完的内容——它多半先反问你一句，而不是替你总结。想明白的东西可以存成「收获」，之后自动变成复习卡片，点一下跳回原句。
 # 可选：市场卡片图标（必须 GitHub 托管的 png/jpg/webp，≈96px 方形最清楚；SVG 不收）
 # icon: https://raw.githubusercontent.com/<owner>/dsh-reading-companion/main/assets/icon-180.png
 # 可选：预构建 tarball（不发 npm 时用）

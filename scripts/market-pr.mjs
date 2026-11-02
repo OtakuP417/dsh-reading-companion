@@ -9,6 +9,8 @@
  *
  * 前置：仓库已存在、已推上去、且已满 1 天（CI 会查，不够会挂，几小时后自己会过）。
  */
+import { entryYml, prBody } from './listing.mjs'
+
 const API = 'https://api.github.com'
 const UPSTREAM = { owner: 'awesome-dsh-plugin', repo: 'awesome-dsh-plugin' }
 
@@ -57,13 +59,8 @@ async function call(method, path, body) {
 
 const sleep = (ms) => new Promise((resolve) => { setTimeout(resolve, ms) })
 
-const ENTRY = `url: https://github.com/${args.owner}/${args.repo}
-name: ${args.owner}/${args.repo}
-category: ${args.category}
-description:
-  en: Read a book in a sidebar panel and talk about the part you have already read; it refuses to discuss anything further on, so it cannot spoil the story. Highlights and discussion turn into takeaways, takeaways become review cards, and a card jumps back to the sentence it came from.
-  zh: 在侧栏的阅读面板里读书，只聊你已经读到的部分，后面的内容它看不到也不会说，所以不剧透。划线和讨论可以存成「收获」，收获会自动变成复习卡片，点卡片能跳回原来的那句话。
-`
+const ENTRY = entryYml({ owner: args.owner, repo: args.repo, category: args.category })
+const BODY = prBody({ owner: args.owner, repo: args.repo })
 
 async function main() {
   const slug = `${args.owner}/${args.repo}`
