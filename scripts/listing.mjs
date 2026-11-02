@@ -33,6 +33,8 @@ A reading companion. You import a book, read it in a full-page panel in the side
 
 Two failure modes it is built against: ask an AI to summarize a book and you get notes for a book you have not read; chat with a general assistant about the book and it already knows the ending, so it leaks. Here the restriction is structural, not a line in the prompt.
 
+**Not for**: "summarize this book in five minutes", or a generic chat shell pointed at a book. If that is what someone wants, this plugin is the wrong tool and the README says so.
+
 ## What it does
 
 - **Read**: import EPUB / MOBI / FB2 / FBZ / TXT / Markdown / HTML / CBZ. Non-EPUB inputs are normalized into an EPUB this repo authors, so the renderer and the indexer always agree on what "chapter N" is. PDF and AZW3 are refused with an explicit message instead of being parsed badly.
