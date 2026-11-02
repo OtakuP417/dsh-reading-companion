@@ -61,8 +61,8 @@ const ENTRY = `url: https://github.com/${args.owner}/${args.repo}
 name: ${args.owner}/${args.repo}
 category: ${args.category}
 description:
-  en: A reading companion for DSH that keeps one CFI-based progress coordinate, refuses every model call outside what the reader has actually read, and turns the reader's own discussion into spaced-repetition cards.
-  zh: 伴读插件：以 EPUB CFI 为唯一进度坐标，把模型能看到的范围硬性限制在已读章节，并把你自己的讨论收束成可复习的卡片。
+  en: Read a book in a sidebar panel and talk about the part you have already read; it refuses to discuss anything further on, so it cannot spoil the story. Highlights and discussion turn into takeaways, takeaways become review cards, and a card jumps back to the sentence it came from.
+  zh: 在侧栏的阅读面板里读书，只聊你已经读到的部分，后面的内容它看不到也不会说，所以不剧透。划线和讨论可以存成「收获」，收获会自动变成复习卡片，点卡片能跳回原来的那句话。
 `
 
 async function main() {
@@ -141,13 +141,28 @@ async function main() {
     title: `Add ${slug}`,
     head: `${args.owner}:${args.branch}`,
     base,
-    body: `Adds **${slug}** — a reading companion plugin for DSH.
+    body: `A reading companion for DSH: you read the book inside DSH and talk about the part you have already read.
 
-- One trusted progress coordinate per book: everything (prompt scope, retrieval, chapter summaries) derives from the reader's read-through ceiling, stored as an EPUB CFI.
-- Anti-spoiler is a hard gate in code, not a prompt instruction: unread chapters are filtered out before retrieval and every gated tool refuses synchronously.
-- Multi-format import (EPUB / MOBI / FB2 / FBZ / TXT / Markdown / HTML / CBZ) normalized into an EPUB we author, so the renderer and the indexer always agree on what "chapter N" means.
-- Review works with the model disconnected: cards are derived by rules from the reader's own takeaways and scheduled with a vendored SM-2 implementation.
-- Manifest: \`dsh.bundle.patch\` → \`cordis.patch.yml\`; client ships as one self-contained \`lib/client.js\`.
+**What a reader does with it**
+
+1. Import a book (EPUB, MOBI, FB2, TXT, Markdown, HTML, or a CBZ comic). It opens as a full page in the left sidebar.
+2. Read and turn pages as usual. The position is saved, so reopening lands on the same passage even after changing the font size.
+3. Ask about what has been read, or highlight one sentence and ask about that sentence. Everything after the current position is not retrievable — the model cannot see it, so it cannot spoil the rest.
+4. Keep something from the conversation as a takeaway. Takeaways become small review cards, and each card jumps back to the sentence it came from.
+
+**What it is not**: a "summarize the whole book and chat about it" shell. There is no code path that hands unread text to the model.
+
+**Listing checks**
+
+- \`package.json\` declares \`dsh.bundle\` with \`dsh.bundle.patch\` → \`cordis.patch.yml\`.
+- The UI registers \`sidebar.panellist\` and \`main\`; it does not write \`document.body\`, does not replace the app root, does not fill an existing slot through DOM selectors, and styles only with \`--dsw-alias-*\` tokens.
+- The host half has no runtime dependencies; the client is one self-contained \`lib/client.js\` built into the repo, so installing from GitHub needs no build step.
+
+**Try it**
+
+\`\`\`
+dsh plugin --profile desktop add "github:${slug}"
+\`\`\`
 
 Repo: https://github.com/${slug}`,
   })
