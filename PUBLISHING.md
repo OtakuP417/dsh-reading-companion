@@ -40,8 +40,8 @@ url: https://github.com/<owner>/dsh-reading-companion
 name: <owner>/dsh-reading-companion
 category: docs          # 见下方分类备选
 description:
-  en: An AI reading buddy that sits next to you while you read a book — and only knows the pages you have already read, so it cannot spoil the rest. Highlight a sentence and ask about it, or just ask about what you just finished; instead of summarizing for you, it usually answers with one concrete question. Whatever you work out can be saved as a takeaway, which later becomes a review card that jumps back to the sentence.
-  zh: 读书时旁边坐一个 AI 同读的人：你读到哪儿它只知道到哪儿，所以不剧透。觉得哪句有意思就划出来问它，或者直接问刚读完的内容——它多半先反问你一句，而不是替你总结。想明白的东西可以存成「收获」，之后自动变成复习卡片，点一下跳回原句。
+  en: An AI reading buddy: it sits next to you while you read, and only knows the pages you have already reached — so it cannot spoil the rest, and it never summarizes the whole book for you. Highlight a sentence and ask about it, or just ask about what you finished; it usually restates what you seem to mean and asks one concrete question back. What you work out can be saved as a takeaway and later becomes a review card that jumps back to the sentence. EPUB, MOBI, FB2, TXT, Markdown, HTML, CBZ.
+  zh: 读书时旁边坐一个 AI 同读的人：它只知道你读到的位置，所以不会剧透，也不会替你把整本书总结掉。觉得哪句有分量就划出来问它，或者直接问刚读完的内容——它多半先复述你的意思，再反问一个具体的问题。想明白的东西可以存成「收获」，之后变成复习卡片，点一下跳回原句。支持 EPUB、MOBI、FB2、TXT、Markdown、HTML、CBZ。
 # 可选：市场卡片图标（必须 GitHub 托管的 png/jpg/webp，≈96px 方形最清楚；SVG 不收）
 # icon: https://raw.githubusercontent.com/<owner>/dsh-reading-companion/main/assets/icon-180.png
 # 可选：预构建 tarball（不发 npm 时用）
