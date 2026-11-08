@@ -11,6 +11,7 @@ import { HybridIndex } from '../shared/retrieval.js'
 import { clip } from '../shared/retrieval.js'
 import { buildCfi } from '../shared/cfi.js'
 import { describeProgress, filterReadable, gateTarget, requireReadable, resolveSectionIndex } from '../shared/spoiler.js'
+import { resolveChapterIndex } from './books.js'
 
 /**
  * Per-ceiling index cache. The key includes the read-through ceiling because an
@@ -87,14 +88,49 @@ export async function summaryIndexText(library, bookId, progress, options = {}) 
   return lines.join('\n')
 }
 
+/** How many characters of the selection are used to look for it in the chapter. */
+const QUOTE_PROBE = 24
+
+const squeeze = (text) => String(text ?? '').replace(/\s+/g, '')
+
+const escapeChar = (char) => char.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+
+/**
+ * Find the reader's selection inside the chapter's stored text.
+ *
+ * An exact `indexOf` is not enough: a selection that crosses a paragraph break
+ * arrives as `"…句子\n下一句…"` while the stored text has `"\n\n"`, and a soft
+ * break inside a paragraph arrives as a space. When the exact search misses, the
+ * sentence is looked for again with any amount of whitespace allowed between its
+ * characters — that is what makes "discuss this sentence" actually discuss *that*
+ * sentence instead of the top of the chapter.
+ *
+ * @param {string} fullText
+ * @param {string} quote
+ * @returns {{ index: number, length: number, exact: boolean } | null}
+ */
+export function locateQuote(fullText, quote) {
+  const text = String(fullText ?? '')
+  const needle = String(quote ?? '').trim()
+  if (!text || !needle) return null
+  const exact = text.indexOf(needle)
+  if (exact >= 0) return { index: exact, length: needle.length, exact: true }
+  const probe = squeeze(needle).slice(0, QUOTE_PROBE)
+  if (probe.length < 4) return null
+  const pattern = new RegExp(probe.split('').map(escapeChar).join('\\s*'))
+  const loose = pattern.exec(text)
+  if (!loose) return null
+  return { index: loose.index, length: probe.length, exact: false }
+}
+
 /**
  * The reader's selected passage, plus real text on both sides.
  *
  * @param {import('./books.js').Library} library
  * @param {string} bookId
  * @param {any} progress
- * @param {{ cfi?: string | null, sectionIndex?: number | null, quote?: string | null, before?: number, after?: number }} selection
- * @returns {Promise<{ text: string, sectionIndex: number, title: string | null, window: any }>}
+ * @param {{ cfi?: string | null, sectionIndex?: number | null, quote?: string | null, fraction?: number | null, before?: number, after?: number }} selection
+ * @returns {Promise<{ text: string, sectionIndex: number, title: string | null, window: any, quote: string, matched: boolean }>}
  */
 export async function selectionWindow(library, bookId, progress, selection) {
   const sections = await library.sections(bookId)
@@ -106,10 +142,15 @@ export async function selectionWindow(library, bookId, progress, selection) {
   const section = sections.find((item) => item.index === index)
   const fullText = String(section?.text ?? '')
   const quote = typeof selection.quote === 'string' ? selection.quote.trim() : ''
+  const located = locateQuote(fullText, quote)
   let center = 0
-  if (quote) {
-    const at = fullText.indexOf(quote)
-    center = at >= 0 ? at + Math.floor(quote.length / 2) : 0
+  if (located) {
+    center = located.index + Math.floor(located.length / 2)
+  } else if (typeof selection.fraction === 'number' && selection.fraction >= 0 && selection.fraction <= 1) {
+    // The sentence could not be found (an illustrated page, a footnote split,
+    // unusual punctuation). Fall back to where the reader actually is in the
+    // chapter rather than to its first line, which would be a different passage.
+    center = Math.floor(fullText.length * selection.fraction)
   }
   const window = await library.textWindow(bookId, index, {
     center,
@@ -121,6 +162,8 @@ export async function selectionWindow(library, bookId, progress, selection) {
     title: window?.title ?? null,
     text: window?.text ?? '',
     window,
+    quote,
+    matched: Boolean(located),
   }
 }
 

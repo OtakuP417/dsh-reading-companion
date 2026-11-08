@@ -127,9 +127,22 @@ export default function App() {
             setSelection(payload)
             void api.selection({ bookId, ...payload }).catch(() => {})
           },
+          onKey: (event) => {
+            // Keys typed while the iframe has focus never reach the window
+            // listener, and that is exactly where a reader's hands are.
+            const forward = event.key === 'ArrowRight' || event.key === 'ArrowDown' || event.key === 'PageDown'
+            const back = event.key === 'ArrowLeft' || event.key === 'ArrowUp' || event.key === 'PageUp'
+            if (!forward && !back) return
+            event.preventDefault()
+            void (forward ? readerRef.current?.next() : readerRef.current?.prev())
+          },
           onError: (e) => setError(`打不开这本书：${e.message}`),
         })
         readerRef.current.applyFontSize(fontSize)
+        // The conversation is kept on the host, so reopening a book (or
+        // reloading the panel) brings back what was already worked out.
+        const chat = await api.chat(bookId).catch(() => ({ messages: [] }))
+        setMessages((chat.messages ?? []).map((item) => ({ role: item.role, text: item.text, cfi: item.cfi ?? null })))
         const notes = (await api.state()).notes ?? []
         await readerRef.current.showHighlights(notes)
       } catch (e) {
@@ -150,6 +163,24 @@ export default function App() {
   }, [activeBookId])
 
   useEffect(() => () => readerRef.current?.destroy(), [])
+
+  // Arrow keys turn pages, the way they do in every other reader. Skipped while
+  // typing, and for modified keys (the panel is inside an app that uses them).
+  useEffect(() => {
+    const onKeyDown = (event) => {
+      const target = event.target
+      const tag = String(target?.tagName ?? '').toLowerCase()
+      if (tag === 'input' || tag === 'textarea' || tag === 'select' || target?.isContentEditable) return
+      if (event.metaKey || event.ctrlKey || event.altKey) return
+      const forward = event.key === 'ArrowRight' || event.key === 'ArrowDown' || event.key === 'PageDown'
+      const back = event.key === 'ArrowLeft' || event.key === 'ArrowUp' || event.key === 'PageUp'
+      if (!forward && !back) return
+      event.preventDefault()
+      void (forward ? readerRef.current?.next() : readerRef.current?.prev())
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [])
 
   // Poll the summary index while the reader is ahead of it; summaries are
   // generated in the background and must never block reading.
@@ -220,8 +251,12 @@ export default function App() {
         cfi: selection?.cfi ?? null,
         spineIndex: selection?.spineIndex ?? null,
         quote: selection?.quote ?? null,
+        fraction: selection?.fraction ?? null,
       })
       setAskedWithoutWindow(!result.usedWindow && Boolean(selection))
+      if (selection && result.usedWindow && result.matched === false) {
+        setNote('没能在正文里准确定位到你划的那句，已按你所在的位置取上下文。')
+      }
       setMessages((prev) => [...prev, { role: 'ai', text: result.reply, sections: result.sections }])
     } catch (e) {
       setError(String(e.message ?? e))
@@ -445,7 +480,7 @@ export default function App() {
                   ? busy
                   : pageInfo && pageInfo.pages > 0
                     ? `第 ${pageInfo.page + 1} / ${pageInfo.pages} 页`
-                    : 'PageUp / PageDown 也可以翻页'}
+                    : '← ↑ → ↓ 或 PageUp / PageDown 翻页'}
               </span>
               <Btn label="下一页" onClick={() => void readerRef.current?.next()} />
             </div>
@@ -536,7 +571,7 @@ export default function App() {
                   rows={3}
                 />
                 <div className="drc-row drc-row-between">
-                  <span className="drc-dim">{askedWithoutWindow ? '' : ''}</span>
+                  <span className="drc-dim">{askedWithoutWindow ? '这次没能带上你的划线，只用了章节上下文。' : ''}</span>
                   <div className="drc-row">
                     {chapterTakeaways.length > 0 ? <Btn label="本章收口" onClick={() => void closing()} /> : null}
                     <Btn label="发送" onClick={() => void ask()} primary disabled={!draft.trim() || !activeBookId} />

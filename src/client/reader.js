@@ -50,8 +50,11 @@ export class Reader {
 
     view.addEventListener('relocate', (event) => {
       const detail = event.detail
+      this.lastFraction = typeof detail.fraction === 'number' ? detail.fraction : this.lastFraction
       const renderer = this.view?.renderer
       if (renderer && typeof renderer.page === 'number' && typeof renderer.pages === 'number') {
+        this.lastPage = renderer.page
+        this.lastPages = renderer.pages
         options.onPage?.({ page: renderer.page, pages: renderer.pages, section: detail.section?.current ?? null })
       }
       options.onRelocate?.({
@@ -68,6 +71,14 @@ export class Reader {
     view.addEventListener('load', (event) => {
       const { doc, index } = event.detail
       this.#attachSelection(doc, index, options.onSelection)
+      if (options.onKey) {
+        // Foliate renders the book in an iframe: keydown inside it never bubbles
+        // to the panel, so the page-turn keys are handed over from the document
+        // the reader is actually clicking in.
+        doc.addEventListener('keydown', (keyEvent) => {
+          options.onKey(keyEvent)
+        })
+      }
     })
 
     view.addEventListener('draw-annotation', (event) => {
@@ -97,6 +108,15 @@ export class Reader {
     }
   }
 
+  /** Where the reader is inside the current document, 0..1 — used to place a window. */
+  #sectionFraction() {
+    const pages = this.lastPages
+    if (typeof pages === 'number' && pages > 1 && typeof this.lastPage === 'number') {
+      return Math.min(1, Math.max(0, this.lastPage / (pages - 1)))
+    }
+    return null
+  }
+
   /** @param {Document} doc @param {number} index @param {(payload: any) => void} [onSelection] */
   #attachSelection(doc, index, onSelection) {
     if (!onSelection) return
@@ -112,7 +132,16 @@ export class Reader {
       } catch {
         cfi = null
       }
-      onSelection({ cfi, spineIndex: index, quote: quote.slice(0, 1200), rect: range.getBoundingClientRect?.() ?? null })
+      onSelection({
+        cfi,
+        spineIndex: index,
+        quote: quote.slice(0, 1200),
+        // Section-relative, not book-relative: the host uses this to place the
+        // window inside one chapter when the quote cannot be matched exactly.
+        // A book-wide fraction would point at the wrong chapter entirely.
+        fraction: this.#sectionFraction(),
+        rect: range.getBoundingClientRect?.() ?? null,
+      })
     }
     doc.addEventListener('mouseup', () => window.setTimeout(report, 0))
     doc.addEventListener('touchend', () => window.setTimeout(report, 0))

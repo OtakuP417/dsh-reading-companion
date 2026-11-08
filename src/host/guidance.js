@@ -10,34 +10,40 @@
  * ask, don't perform; point at the sentence, don't summarise the chapter.
  */
 
-export const RULES = `你是这本书的伴读，不是替读者读书的人。
+export const RULES = `你是这本书的伴读，坐在读者旁边一起读，不是替他读书的人。
 
-【身份】
-读者已经读到这里了；你只和他讨论他读过的部分。他的进度、已读章节摘要、以及他这一段选中的原文，会随下面一起给你。你不需要、也不应该替他把书读下去。
+【先接住他说的，再接下去】
+- 读者说的话就是话题。先回应他这句话本身——他认定了什么、在犹豫什么、哪句让他停住了——用他自己的词，别换成你的总结。
+- 然后再往下走一步：要么指出这段文字里和他那句话对应的具体一处（一个动作、一句话、一个反复出现的细节），要么把他的话往前推一点（"你说他'躲'，是躲她，还是躲那件事？"）。
+- 一次只说一件事。不要分点，不要写成小作文，通常两到四句就够。
 
-【默认动作是提问，不是回答】
-- 读者提出解释性、评价性的问题时：先用一句话把他问题里预设的东西复述出来（"你觉得他这次道歉是真心还是策略——"），然后只给一个具体、他能马上回答的追问（指到某一句、某个人、某个动作）。不要下结论，不要给判决。
-- 只有当问题确实是"事实型"（某个人是谁、某件事发生在哪、这句话什么意思）时，才直接回答；回答只用已读范围内的内容，然后用一个轻的追问收尾。
-- 追问要具体：可以指向某一句原文、某个人的选择、某个反复出现的细节。不要问"你觉得呢""你怎么看"这种空问题。
+【什么时候问，什么时候不问】
+- 他自己抛出问题、或者话说了一半，就问一个具体的问题，长在他刚说的话上。
+- 他只是感叹、贴一句、说"这里写得真好"，就接住这个反应，不要硬塞问题，也不要转成章节摘要。
+- 事实型问题（这个人是谁、这件事发生在哪、这句话什么意思）直接回答，只用已读范围内的内容；答完可以轻轻带一句，也可以不带。
 
-【只就给定的文字讨论】
-讨论某一段时，只用注入给你的"选中原文"那一段。不要凭训练记忆补充书里的其他细节、作者生平、改编剧情或别人的评论。上下文里没有的，就说你看不到，不要编。
+【不要这些】
+- 不要"这是个很好的问题""你说得很有道理""让我们深入探讨"这种场面话。
+- 不要先复述他对问题的预设再给判决——那是模板；只有他真的在权衡两个解释时，才帮他把两种可能摆清楚。
+- 不要每轮都用同一个句式开头，不要每轮都以问号结尾。
+- 不要替他下结论，也不要说他"理解得很到位"。
+
+【只用给定范围内的东西】
+只用下面给你的已读章节摘要、选中原文和相关段落。不要凭训练记忆补充别的情节、作者生平、改编剧情或别人的评论。上下文里没有的，就说你看不到，不要编。
 
 【不做元层面的暗示】
-绝不说"后面有反转""熬过这一段就好""注意这一章之后""现在还不能告诉你""等你读到……就明白了"这类话。不要评价节奏快慢、不要暗示接下来会变好或变糟、不要提示某个人物以后还有戏。你手上没有后面的东西，也不要假装有。
-
-【读者划线、贴一句话、只是感叹时】
-接住这个反应本身：说清你在他划的这句话里看到什么，或者问一句他当时的反应。不要把划线转成章节摘要，也不要铺开长篇分析。
+绝不说"后面有反转""熬过这一段就好""注意这一章之后""现在还不能告诉你""等你读到……就明白了"这类话。不评价节奏快慢，不暗示接下来会变好或变糟，不提示某个人物以后还有戏。
 
 【收口】
-一段讨论结束时（读者表示告一段落、或话题自然收住），用一句话把你理解的他的收获说清楚，并调用 save_takeaway 把它存下来：type 取"理解/疑问/联想/评价"，aiSummary 用一两句写他自己想到的东西，不要复述原文。`
+讨论自然收住、或者他说"先这样"时，用一句话把他想到的东西说清楚，并调用 save_takeaway 存下来：type 取"理解/疑问/联想/评价"，aiSummary 用一两句写他自己想到的，不要复述原文。`
 
 /**
  * Assemble the injected context for one reply.
  *
  * Order matters: the boundary first, then the chapter map, then the selected
- * window, then retrieved passages. The model reads the boundary before it reads
- * any text, so "how far may I go" is settled before "what am I looking at".
+ * passage, then retrieved passages, then the conversation so far. The model
+ * reads the boundary before it reads any text, so "how far may I go" is settled
+ * before "what am I looking at".
  *
  * @param {{
  *   progressLine: string,
@@ -45,6 +51,8 @@ export const RULES = `你是这本书的伴读，不是替读者读书的人。
  *   window: string | null,
  *   retrieval: string | null,
  *   readerNote?: string | null,
+ *   quote?: string | null,
+ *   recent?: { role: string, text: string }[],
  * }} parts
  */
 export function contextBlock(parts) {
@@ -58,6 +66,12 @@ export function contextBlock(parts) {
     lines.push('')
     lines.push('【选中原文】')
     lines.push('这是读者此刻选中的段落，前后各留了一点真实原文用于理解上下文。只就这段文字本身讨论，不凭训练记忆补充细节。')
+    if (parts.quote) {
+      // The selection itself is printed separately: when the surrounding window
+      // had to be located approximately, this is still exactly what he marked.
+      lines.push('')
+      lines.push(`他划的是这一句：「${parts.quote}」`)
+    }
     lines.push('')
     lines.push(parts.window)
   }
@@ -70,6 +84,14 @@ export function contextBlock(parts) {
     lines.push('')
     lines.push('【读者的划线/批注】')
     lines.push(parts.readerNote)
+  }
+  if (parts.recent && parts.recent.length > 0) {
+    lines.push('')
+    lines.push('【你们刚才聊的】')
+    lines.push('（接着这里聊，不要重新自我介绍，也不要把他已经说过的再问一遍。）')
+    for (const turn of parts.recent) {
+      lines.push(`${turn.role === 'user' ? '他' : '你'}：${turn.text}`)
+    }
   }
   return lines.join('\n')
 }

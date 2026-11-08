@@ -339,6 +339,7 @@ export function registerRoutes(deps) {
         const selection = {
           cfi: typeof body?.cfi === 'string' ? body.cfi : null,
           quote: typeof body?.quote === 'string' ? body.quote : null,
+          fraction: typeof body?.fraction === 'number' ? body.fraction : null,
         }
         const askSections = await library.sections(bookId)
         const askedChapter =
@@ -362,23 +363,27 @@ export function registerRoutes(deps) {
         const route = resolveRoute(ctx, config, null)
         if (!route) return sendJson(res, 503, { ok: false, error: '这个会话没有可用的模型路由，暂时无法对话。复习和笔记不受影响。' })
 
+        // No catch: a broken window must surface as an error, not silently turn
+        // into "the model never saw your highlight" (that bug hid for days).
         const window = await selectionWindow(library, bookId, progress, {
           cfi: anchored ? selection.cfi : null,
           sectionIndex: askChapter,
           quote: anchored ? selection.quote : null,
+          fraction: anchored ? selection.fraction : null,
           before: config.windowChars ?? 300,
           after: config.windowChars ?? 300,
-        }).catch((error) => {
-          if (error?.name === 'SpoilerGateError') throw error
-          return null
         })
         const index = await summaryIndexText(library, bookId, progress)
         const hits = await retrieveRead(library, cache, bookId, progress, question || window?.text?.slice(0, 300) || '', { limit: 3 })
+        const history = await library.messages(bookId)
+        const recent = history.slice(-6).map((item) => ({ role: item.role, text: clip(String(item.text ?? ''), 400) }))
         const system = singleTurnSystem({
           progressLine: progressLine(progress, { bookTitle: meta.title, sectionCount: meta.chapterCount }),
           summaryIndex: index,
           window: window ? `第 ${window.sectionIndex + 1} 章${window.title ? `「${window.title}」` : ''}\n${window.text}` : null,
+          quote: window?.quote || null,
           retrieval: retrievalText(hits),
+          recent,
         })
         const answer = await streamText(ctx, {
           provider: route.provider,
@@ -386,10 +391,34 @@ export function registerRoutes(deps) {
           system,
           prompt: question || '我想就这段文字聊聊。',
           maxTokens: 1600,
-          temperature: 0.6,
+          temperature: 0.7,
           signal: undefined,
         })
-        return sendJson(res, 200, { ok: true, reply: answer, usedWindow: Boolean(window), sections: { window: window?.sectionIndex ?? null, retrieved: hits.map((hit) => hit.sectionIndex) } })
+        // Persisted only once the answer exists: a failed model call must not
+        // leave a question in the history that nothing ever replied to.
+        await library.addMessage(bookId, {
+          role: 'user',
+          text: question || '（就这段聊聊）',
+          cfi: selection.cfi,
+          quote: selection.quote,
+          chapterIndex: askChapter,
+        })
+        await library.addMessage(bookId, { role: 'ai', text: answer, cfi: selection.cfi, chapterIndex: askChapter })
+        return sendJson(res, 200, {
+          ok: true,
+          reply: answer,
+          usedWindow: Boolean(window),
+          matched: Boolean(window?.matched),
+          sections: { window: window?.sectionIndex ?? null, retrieved: hits.map((hit) => hit.sectionIndex) },
+        })
+      }
+
+      // ---- discussion history ---------------------------------------------
+      if (method === 'GET' && path === '/chat') {
+        const bookId = String(url.searchParams.get('bookId') ?? state.activeBookId ?? '')
+        if (!bookId) return sendJson(res, 200, { ok: true, messages: [] })
+        const messages = await library.messages(bookId)
+        return sendJson(res, 200, { ok: true, messages })
       }
 
       // ---- 本章收口 --------------------------------------------------------

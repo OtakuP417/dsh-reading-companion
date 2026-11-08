@@ -182,6 +182,45 @@ test('stage 2: a read anchor is answered from the injected window only', async (
   assert.ok(!prompt.includes('账本最后一页'), 'unread text must not leak through retrieval either')
 })
 
+test('stage 3: the discussion is kept on the host and comes back on reopen', async () => {
+  const { request } = await setup({ ceiling: 1 })
+
+  const answered = await request('POST', '/__reading/ask', {
+    bookId: BOOK,
+    sectionIndex: 1,
+    quote: '你自己去问他',
+    question: '老板为什么不肯直说？',
+  })
+  assert.equal(answered.status, 200, JSON.stringify(answered.json))
+
+  const history = await request('GET', `/__reading/chat?bookId=${encodeURIComponent(BOOK)}`)
+  assert.equal(history.status, 200)
+  const messages = history.json.messages
+  assert.equal(messages.length, 2, 'the question and the answer are both kept')
+  assert.equal(messages[0].role, 'user')
+  assert.equal(messages[0].text, '老板为什么不肯直说？')
+  assert.equal(messages[0].quote, '你自己去问他', 'the highlight travels with the message')
+  assert.equal(messages[1].role, 'ai')
+  assert.ok(messages[1].text.length > 0)
+})
+
+test('stage 3: a highlight split across paragraphs still lands on the right passage', async () => {
+  const { request, prompts } = await setup({ ceiling: 1 })
+
+  // The stored text is one run of prose; a selection dragged across a rendered
+  // line break arrives with a newline in it, so an exact indexOf cannot work.
+  const answered = await request('POST', '/__reading/ask', {
+    bookId: BOOK,
+    sectionIndex: 1,
+    quote: '你自己去问他。\n她没有立刻走',
+    question: '这两句连起来看是什么意思？',
+  })
+  assert.equal(answered.status, 200, JSON.stringify(answered.json))
+  assert.equal(answered.json.matched, true, 'the quote must be located by fuzzy match')
+  assert.ok(prompts[0].includes('你自己去问他'), 'the window is centred on the highlight')
+})
+
+
 test('stage 2: chapter summaries are generated only up to the ceiling', async () => {
   const { request, prompts } = await setup({ ceiling: 1 })
   await request('POST', '/__reading/summaries', { bookId: BOOK })

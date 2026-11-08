@@ -55,6 +55,8 @@ export const api = {
   saveProgress: (payload) => request('/progress', { method: 'POST', body: JSON.stringify(payload) }),
   selection: (payload) => request('/selection', { method: 'POST', body: JSON.stringify(payload) }),
   ask: (payload) => request('/ask', { method: 'POST', body: JSON.stringify(payload) }),
+  /** The saved discussion for one book, oldest first. */
+  chat: (bookId) => request(`/chat?bookId=${encodeURIComponent(bookId ?? '')}`),
   saveNote: (payload) => request('/note', { method: 'POST', body: JSON.stringify(payload) }),
   saveTakeaway: (payload) => request('/takeaway', { method: 'POST', body: JSON.stringify(payload) }),
   closing: (payload) => request('/closing', { method: 'POST', body: JSON.stringify(payload) }),

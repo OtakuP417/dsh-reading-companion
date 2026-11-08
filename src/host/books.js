@@ -465,6 +465,37 @@ export class Library {
     return readLines(this.store.logPath('notes', bookId))
   }
 
+  /**
+   * One line of the discussion, kept on the host so it survives a reload.
+   *
+   * The client used to hold the conversation in React state only, which meant
+   * every refresh wiped it — the reader could not go back to what they had
+   * already worked out. Messages are append-only like everything else here.
+   *
+   * @param {string} bookId
+   * @param {{ role: 'user' | 'ai' | 'closing', text: string, cfi?: string | null, chapterIndex?: number | null, quote?: string | null }} message
+   */
+  async addMessage(bookId, message) {
+    const record = {
+      bookId,
+      role: message.role === 'ai' ? 'ai' : message.role === 'closing' ? 'closing' : 'user',
+      text: String(message.text ?? '').slice(0, 8000),
+      cfi: message.cfi ?? null,
+      quote: message.quote ?? null,
+      chapterIndex: typeof message.chapterIndex === 'number' ? message.chapterIndex : null,
+      createdAt: new Date().toISOString(),
+    }
+    if (!record.text) return null
+    await appendLine(this.store.logPath('chat', bookId), record)
+    return record
+  }
+
+  /** @param {string} bookId */
+  async messages(bookId) {
+    const lines = await readLines(this.store.logPath('chat', bookId))
+    return lines.slice(-400)
+  }
+
   /** @param {string} bookId @param {any} takeaway */
   async addTakeaway(bookId, takeaway) {
     const record = { bookId, createdAt: new Date().toISOString(), ...takeaway }
