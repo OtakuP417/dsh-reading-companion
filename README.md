@@ -50,6 +50,8 @@ dsh plugin --profile desktop add "github:OtakuP417/dsh-reading-companion"
 
 回忆不起来就点「回到原文」，落回 foliate-js 里那句话的位置。
 
+界面上的几件小事：方向键 `← ↑ → ↓`（或 `PageUp / PageDown`）翻页；底栏显示「第 X / Y 页」；对话存在本地 `chat/<bookId>.jsonl`，换一本书再切回来、或者刷新页面，之前的讨论都还在。
+
 ## 安装
 
 ```bash
